@@ -19,12 +19,22 @@
     {%- endif %}
 {%- endif %}
 {%- for message in messages %}
-    {%- if (message.role == "user") or (message.role == "system" and not loop.first) or (message.role == "assistant" and not message.tool_calls) %}
+    {%- if (message.role == "user") or (message.role == "system" and not loop.first) %}
         {{- '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>' + '\n' }}
+    {%- elif message.role == "assistant" and not message.tool_calls %}
+        {%- set content = message.content %}
+        {%- if not loop.last and '</think>' in content %}
+            {%- set content = content.split('</think>')[-1].lstrip('\n') %}
+        {%- endif %}
+        {{- '<|im_start|>' + message.role + '\n' + content + '<|im_end|>' + '\n' }}
     {%- elif message.role == "assistant" %}
+        {%- set content = message.content %}
+        {%- if not loop.last and '</think>' in content %}
+            {%- set content = content.split('</think>')[-1].lstrip('\n') %}
+        {%- endif %}
         {{- '<|im_start|>' + message.role }}
         {%- if message.content %}
-            {{- '\n' + message.content }}
+            {{- '\n' + content }}
         {%- endif %}
         {%- for tool_call in message.tool_calls %}
             {%- if tool_call.function is defined %}
@@ -50,5 +60,6 @@
     {%- endif %}
 {%- endfor %}
 {%- if add_generation_prompt %}
-    {{- '<|im_start|>assistant\n' }}
+    {{- '<|im_start|>assistant\n<think>\n' }}
+    {%- if not enable_thinking -%}{{- '</think>' -}}{%- endif -%}
 {%- endif %}
