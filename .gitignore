@@ -1,0 +1,7 @@
+*.gguf
+*.bin
+*.log
+*.tmp
+.DS_Store
+build/
+dist/

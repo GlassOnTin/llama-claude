@@ -1,0 +1,2 @@
+ACTION=="add|bind", SUBSYSTEM=="pci", DRIVERS=="nvidia", ATTR{vendor}=="0x10de", RUN+="/sbin/ub-device-create"
+ACTION=="add|bind", SUBSYSTEM=="pci", DRIVERS=="nvidia", ATTR{vendor}=="0x10de", RUN+="/bin/systemctl try-restart nvidia-persistenced.service"
