@@ -1,0 +1,20 @@
+[Unit]
+Description=llama.cpp Dual RTX 5090 Server (Qwen3.8-27B Vision + MTP)
+After=network-online.target nvidia-persistenced.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ian
+Group=ian
+WorkingDirectory=/home/ian/Code/llama-claude
+ExecStart=/home/ian/Code/llama-claude/serve.sh
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGINT
+TimeoutStopSec=15s
+LimitNOFILE=65536
+Environment="PATH=/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin"
+
+[Install]
+WantedBy=multi-user.target

@@ -134,24 +134,37 @@ Instead of dumping raw `<think>...</think>` text into conversation history, `lla
 
 ## Quickstart
 
-### 1. Download Model & MTP Weights
+### Option A: One-Step Automated Installation
+```bash
+./install.sh
+```
+
+### Option B: Manual Setup
+
+#### 1. Download Model & MTP Weights
 ```bash
 ./download.sh
 ```
 
-### 2. Start the Dual-GPU Server
+#### 2. Start the Dual-GPU Server
+Run directly in a terminal:
 ```bash
 ./serve.sh
 ```
-The server will bind to `http://0.0.0.0:8090` with full vision, 256k context, and MTP enabled.
 
-### 3. Add Shell Integration to `~/.bashrc`
-Add the following line to your `~/.bashrc`:
+Or install and start as a **systemd service**:
+```bash
+sudo cp systemd/llama-qwen.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now llama-qwen
+```
+
+#### 3. Add Shell Integration to `~/.bashrc`
 ```bash
 [ -f "$HOME/Code/llama-claude/bash_module.sh" ] && . "$HOME/Code/llama-claude/bash_module.sh"
 ```
 
-### 4. Launch Claude Code
+#### 4. Launch Claude Code
 ```bash
 lclaude
 ```
