@@ -35,33 +35,41 @@ echo "[2/4] Host Configuration (PCIe ASPM, udev hotplug, modprobe)..."
 if [ "$EUID" -eq 0 ]; then
     bash "$SCRIPT_DIR/host-config/setup-host.sh"
 else
-    echo "  -> To apply kernel/udev host settings, run:"
-    echo "     sudo $SCRIPT_DIR/host-config/setup-host.sh"
+    echo "  -> Applying host configuration via sudo..."
+    sudo "$SCRIPT_DIR/host-config/setup-host.sh" || {
+        echo "  -> Note: Run 'sudo $SCRIPT_DIR/host-config/setup-host.sh' if needed later."
+    }
 fi
 
 # --- 3. Systemd Service ---
 echo ""
-echo "[3/4] Configuring systemd service..."
+echo "[3/4] Installing systemd service..."
 SERVICE_SRC="$SCRIPT_DIR/systemd/llama-qwen.service"
 SERVICE_DST="/etc/systemd/system/llama-qwen.service"
 
+CONFIGURED_SERVICE=$(mktemp)
+sed -e "s|^User=.*|User=$CURRENT_USER|" \
+    -e "s|^Group=.*|Group=$(id -gn "$CURRENT_USER")|" \
+    -e "s|^WorkingDirectory=.*|WorkingDirectory=$SCRIPT_DIR|" \
+    -e "s|^ExecStart=.*|ExecStart=$SCRIPT_DIR/serve.sh|" \
+    "$SERVICE_SRC" > "$CONFIGURED_SERVICE"
+
 if [ "$EUID" -eq 0 ]; then
-    # Adjust user if run under sudo
-    sed -i "s|^User=.*|User=$CURRENT_USER|" "$SERVICE_SRC"
-    sed -i "s|^Group=.*|Group=$(id -gn "$CURRENT_USER")|" "$SERVICE_SRC"
-    sed -i "s|^WorkingDirectory=.*|WorkingDirectory=$SCRIPT_DIR|" "$SERVICE_SRC"
-    sed -i "s|^ExecStart=.*|ExecStart=$SCRIPT_DIR/serve.sh|" "$SERVICE_SRC"
-    
-    cp "$SERVICE_SRC" "$SERVICE_DST"
+    cp "$CONFIGURED_SERVICE" "$SERVICE_DST"
     systemctl daemon-reload
-    echo "  -> Installed $SERVICE_DST"
-    echo "  -> Service commands:"
-    echo "     sudo systemctl enable llama-qwen"
-    echo "     sudo systemctl start llama-qwen"
-    echo "     sudo systemctl status llama-qwen"
+    rm -f "$CONFIGURED_SERVICE"
+    echo "  -> Successfully installed $SERVICE_DST"
 else
-    echo "  -> To install the systemd service, run:"
-    echo "     sudo cp $SERVICE_SRC $SERVICE_DST && sudo systemctl daemon-reload"
+    echo "  -> Copying service unit to $SERVICE_DST (via sudo)..."
+    if sudo cp "$CONFIGURED_SERVICE" "$SERVICE_DST"; then
+        sudo systemctl daemon-reload
+        rm -f "$CONFIGURED_SERVICE"
+        echo "  -> Successfully installed $SERVICE_DST"
+    else
+        rm -f "$CONFIGURED_SERVICE"
+        echo "  -> Failed to install service. You can manually run:"
+        echo "     sudo cp $SERVICE_SRC $SERVICE_DST && sudo systemctl daemon-reload"
+    fi
 fi
 
 # --- 4. Model Weights Check ---
@@ -79,8 +87,13 @@ echo ""
 echo "========================================================"
 echo " Installation Complete!"
 echo "========================================================"
+echo " Service Management:"
+echo "   sudo systemctl enable --now llama-qwen   # Start on boot & launch now"
+echo "   sudo systemctl status llama-qwen         # Check service status"
+echo "   sudo systemctl stop llama-qwen           # Stop service"
+echo ""
 echo " Usage:"
-echo "   1. Start server:          llama-serve-qwen   (or sudo systemctl start llama-qwen)"
-echo "   2. Launch Claude Code:    lclaude"
-echo "   3. Interactive CLI chat:  llama-qwen"
+echo "   1. Start server interactively:  llama-serve-qwen"
+echo "   2. Launch Claude Code:          lclaude"
+echo "   3. Interactive CLI chat:        llama-qwen"
 echo "========================================================"
