@@ -16,22 +16,22 @@ NUM_GPUS=$(nvidia-smi -L 2>/dev/null | wc -l || echo 2)
 if [ "$NUM_GPUS" -ge 3 ]; then
     export CUDA_VISIBLE_DEVICES="0,1,2"
     DEFAULT_SPLIT_27B="20,22,22"
-    DEFAULT_SPLIT_FLASH="16,16,16"
+    DEFAULT_SPLIT_FLASH="14,17,17"
     GPU_LABEL="Triple RTX 5090 (96GB Total VRAM)"
 else
     export CUDA_VISIBLE_DEVICES="0,1"
     DEFAULT_SPLIT_27B="30,34"
-    DEFAULT_SPLIT_FLASH="24,24"
+    DEFAULT_SPLIT_FLASH="20,28"
     GPU_LABEL="Dual RTX 5090 (64GB Total VRAM)"
 fi
 
 # Detect Model Stack: Flash-Next vs Qwen3.8-27B
-if [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/Q6_K/Qwen.Qwen3.8-Flash-Next.f16.gguf.Q6_K.gguf-00001-of-00011.gguf" ]; then
-    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/Q6_K/Qwen.Qwen3.8-Flash-Next.f16.gguf.Q6_K.gguf-00001-of-00011.gguf}"
-    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-Qwen.Qwen3.8-Flash-Next.f16.gguf}"
-    MTP_FILE="${MTP_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mtp-Qwen3.8-Flash-Next-Q8_0.gguf}"
+if [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf" ]; then
+    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
+    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
+    MTP_FILE="${MTP_FILE:-}" # Standalone decoding for qwen4exp base
     TENSOR_SPLIT="${TENSOR_SPLIT:-$DEFAULT_SPLIT_FLASH}"
-    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE Q6_K)"
+    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE / 512 Experts / QSA)"
 else
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-27B-Q8_0.gguf}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/mmproj-Qwen3.8-27B-BF16.gguf}"
