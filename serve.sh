@@ -11,10 +11,35 @@ MODEL_DIR="${MODEL_DIR:-$HOME/models}"
 LLAMA_DIR="${LLAMA_DIR:-$HOME/models/llama.cpp}"
 LLAMA_SERVER="${LLAMA_SERVER:-$LLAMA_DIR/build-cuda/bin/llama-server}"
 
-# Model files
-MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-27B-Q8_0.gguf}"
-MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/mmproj-Qwen3.8-27B-BF16.gguf}"
-MTP_FILE="${MTP_FILE:-$MODEL_DIR/mtp-Qwen3.8-27B-Q8_0.gguf}"
+# Detect available NVIDIA GPUs
+NUM_GPUS=$(nvidia-smi -L 2>/dev/null | wc -l || echo 2)
+if [ "$NUM_GPUS" -ge 3 ]; then
+    export CUDA_VISIBLE_DEVICES="0,1,2"
+    DEFAULT_SPLIT_27B="20,22,22"
+    DEFAULT_SPLIT_FLASH="16,16,16"
+    GPU_LABEL="Triple RTX 5090 (96GB Total VRAM)"
+else
+    export CUDA_VISIBLE_DEVICES="0,1"
+    DEFAULT_SPLIT_27B="30,34"
+    DEFAULT_SPLIT_FLASH="24,24"
+    GPU_LABEL="Dual RTX 5090 (64GB Total VRAM)"
+fi
+
+# Detect Model Stack: Flash-Next vs Qwen3.8-27B
+if [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/Q6_K/Qwen.Qwen3.8-Flash-Next.f16.gguf.Q6_K.gguf-00001-of-00011.gguf" ]; then
+    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/Q6_K/Qwen.Qwen3.8-Flash-Next.f16.gguf.Q6_K.gguf-00001-of-00011.gguf}"
+    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-Qwen.Qwen3.8-Flash-Next.f16.gguf}"
+    MTP_FILE="${MTP_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mtp-Qwen3.8-Flash-Next-Q8_0.gguf}"
+    TENSOR_SPLIT="${TENSOR_SPLIT:-$DEFAULT_SPLIT_FLASH}"
+    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE Q6_K)"
+else
+    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-27B-Q8_0.gguf}"
+    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/mmproj-Qwen3.8-27B-BF16.gguf}"
+    MTP_FILE="${MTP_FILE:-$MODEL_DIR/mtp-Qwen3.8-27B-Q8_0.gguf}"
+    TENSOR_SPLIT="${TENSOR_SPLIT:-$DEFAULT_SPLIT_27B}"
+    MODEL_NAME="Qwen3.8-27B (Dense Q8_0)"
+fi
+
 TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/templates/qwen3.8-claude.jinja}"
 
 # Server Configuration
@@ -23,15 +48,8 @@ HOST="${HOST:-0.0.0.0}"
 CTX_SIZE="${CTX_SIZE:-262144}" # Full 256k context
 N_GPU_LAYERS="${N_GPU_LAYERS:-99}"
 
-# Multi-GPU Configuration:
-# GPU 0: Internal RTX 5090 (Desktop UI allocated, ~30.5GB usable) -> 30 Layers
-# GPU 1: External AORUS RTX 5090 AI-BOX (Headless over TB4, 32GB usable) -> 34 Layers
-TENSOR_SPLIT="${TENSOR_SPLIT:-30,34}"
-
-export CUDA_VISIBLE_DEVICES="0,1"
-
 echo "========================================================"
-echo " Starting Qwen3.8-27B on Dual RTX 5090 (64GB Total VRAM)"
+echo " Starting $MODEL_NAME on $GPU_LABEL"
 echo "========================================================"
 echo " - Base Model:    $MODEL_FILE"
 echo " - Vision mmproj: $MMPROJ_FILE"
