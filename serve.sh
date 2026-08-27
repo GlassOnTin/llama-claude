@@ -25,17 +25,24 @@ else
     GPU_LABEL="Dual RTX 5090 (64GB Total VRAM)"
 fi
 
-# Detect Model Stack: Flash-Next vs Qwen3.8-27B
-if [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf" ]; then
+# Detect Model Stack: Flash-Next (Embedded MTP vs Base) vs Qwen3.8-27B
+if [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf" ]; then
+    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
+    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
+    MTP_MODE="embedded"
+    TENSOR_SPLIT="${TENSOR_SPLIT:-15,17,17}" # 49 layers total (12 on GPU0, 18 on GPU1, 19 on GPU2)
+    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE + Embedded MTP Draft Head)"
+elif [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf" ]; then
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
-    MTP_FILE="${MTP_FILE:-}" # Standalone decoding for qwen4exp base
+    MTP_MODE="none"
     TENSOR_SPLIT="${TENSOR_SPLIT:-$DEFAULT_SPLIT_FLASH}"
     MODEL_NAME="Qwen3.8-Flash-Next (125B MoE / 512 Experts / QSA)"
 else
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-27B-Q8_0.gguf}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/mmproj-Qwen3.8-27B-BF16.gguf}"
     MTP_FILE="${MTP_FILE:-$MODEL_DIR/mtp-Qwen3.8-27B-Q8_0.gguf}"
+    MTP_MODE="standalone"
     TENSOR_SPLIT="${TENSOR_SPLIT:-$DEFAULT_SPLIT_27B}"
     MODEL_NAME="Qwen3.8-27B (Dense Q8_0)"
 fi
@@ -63,7 +70,14 @@ echo "========================================================"
 EXTRA_ARGS=()
 
 # Multi-Token Prediction (MTP) Speculative Decoding
-if [ -n "$MTP_FILE" ] && [ -f "$MTP_FILE" ]; then
+if [ "$MTP_MODE" = "embedded" ]; then
+    echo " [+] Embedded MTP Draft Head detected: Enabling speculative decoding (3 draft tokens)"
+    EXTRA_ARGS+=(
+        --spec-type draft-mtp
+        --spec-draft-n-max 3
+        --spec-draft-p-min 0.75
+    )
+elif [ "$MTP_MODE" = "standalone" ] && [ -n "${MTP_FILE:-}" ] && [ -f "$MTP_FILE" ]; then
     echo " [+] MTP Draft Model detected: Enabling speculative decoding (3 draft tokens)"
     EXTRA_ARGS+=(
         --spec-draft-model "$MTP_FILE"
