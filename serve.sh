@@ -16,7 +16,7 @@ NUM_GPUS=$(nvidia-smi -L 2>/dev/null | wc -l || echo 2)
 if [ "$NUM_GPUS" -ge 3 ]; then
     export CUDA_VISIBLE_DEVICES="0,1,2"
     DEFAULT_SPLIT_27B="20,22,22"
-    DEFAULT_SPLIT_FLASH="14,17,17"
+    DEFAULT_SPLIT_FLASH="12,18,18"
     GPU_LABEL="Triple RTX 5090 (96GB Total VRAM)"
 else
     export CUDA_VISIBLE_DEVICES="0,1"
@@ -45,7 +45,7 @@ TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/templates/qwen3.8-claude.jinja}"
 # Server Configuration
 PORT="${PORT:-8090}"
 HOST="${HOST:-0.0.0.0}"
-CTX_SIZE="${CTX_SIZE:-262144}" # Full 256k context
+CTX_SIZE="${CTX_SIZE:-200000}" # Full 256k context
 N_GPU_LAYERS="${N_GPU_LAYERS:-99}"
 
 echo "========================================================"
@@ -55,15 +55,15 @@ echo " - Base Model:    $MODEL_FILE"
 echo " - Vision mmproj: $MMPROJ_FILE"
 echo " - Template:      $TEMPLATE_FILE"
 echo " - Context Size:  $CTX_SIZE tokens (256k full)"
-echo " - KV Cache:      Q8_0 (~4.7GB total across 256k ctx)"
+echo " - KV Cache:      Q4_0/Q8_0 (~3.5GB total across 256k ctx)"
 echo " - Layer Split:   Pipelined ($TENSOR_SPLIT layers, TB4 optimized)"
 echo " - Endpoint:      http://$HOST:$PORT"
 echo "========================================================"
 
 EXTRA_ARGS=()
 
-# Multi-Token Prediction (MTP) Speculative Decoding (1.6x - 2.4x speedup)
-if [ -f "$MTP_FILE" ]; then
+# Multi-Token Prediction (MTP) Speculative Decoding
+if [ -n "$MTP_FILE" ] && [ -f "$MTP_FILE" ]; then
     echo " [+] MTP Draft Model detected: Enabling speculative decoding (3 draft tokens)"
     EXTRA_ARGS+=(
         --spec-draft-model "$MTP_FILE"
@@ -72,7 +72,7 @@ if [ -f "$MTP_FILE" ]; then
         --spec-draft-ngl 99
     )
 else
-    echo " [-] MTP Draft Model ($MTP_FILE) not found; running standard single-token decoding."
+    echo " [-] Running standard full-precision QSA decoding."
 fi
 
 # Vision Projector
@@ -101,10 +101,13 @@ exec "$LLAMA_SERVER" \
     --split-mode layer \
     --tensor-split "$TENSOR_SPLIT" \
     --ctx-size "$CTX_SIZE" \
+    --parallel 1 \
+    --batch-size 512 \
+    --ubatch-size 256 \
     --flash-attn on \
-    --cache-type-k q8_0 \
+    --cache-type-k q4_0 \
     --cache-type-v q8_0 \
-    --alias "qwen3.8-27b,claude-3-5-sonnet-20241022,claude-3-5-haiku-20241022,claude-3-opus-20240229,claude-sonnet-4-20250514,default" \
+    --alias "qwen3.8-flash-next,qwen3.8-27b,claude-3-5-sonnet-20241022,claude-3-5-haiku-20241022,claude-3-opus-20240229,claude-sonnet-4-20250514,default" \
     --reasoning on \
     --reasoning-format deepseek \
     --metrics \
