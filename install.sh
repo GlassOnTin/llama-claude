@@ -44,33 +44,32 @@ fi
 # --- 3. Systemd Service ---
 echo ""
 echo "[3/4] Installing systemd service..."
-SERVICE_SRC="$SCRIPT_DIR/systemd/llama-qwen.service"
-SERVICE_DST="/etc/systemd/system/llama-qwen.service"
+USER_SYSTEMD_DIR="$USER_HOME/.config/systemd/user"
+mkdir -p "$USER_SYSTEMD_DIR"
 
-CONFIGURED_SERVICE=$(mktemp)
-sed -e "s|^User=.*|User=$CURRENT_USER|" \
-    -e "s|^Group=.*|Group=$(id -gn "$CURRENT_USER")|" \
-    -e "s|^WorkingDirectory=.*|WorkingDirectory=$SCRIPT_DIR|" \
-    -e "s|^ExecStart=.*|ExecStart=$SCRIPT_DIR/serve.sh|" \
-    "$SERVICE_SRC" > "$CONFIGURED_SERVICE"
+cat << EOF > "$USER_SYSTEMD_DIR/llama-qwen.service"
+[Unit]
+Description=llama.cpp Triple RTX 5090 Server (Qwen3.8-Flash-Next)
+After=network-online.target
+Wants=network-online.target
 
-if [ "$EUID" -eq 0 ]; then
-    cp "$CONFIGURED_SERVICE" "$SERVICE_DST"
-    systemctl daemon-reload
-    rm -f "$CONFIGURED_SERVICE"
-    echo "  -> Successfully installed $SERVICE_DST"
-else
-    echo "  -> Copying service unit to $SERVICE_DST (via sudo)..."
-    if sudo cp "$CONFIGURED_SERVICE" "$SERVICE_DST"; then
-        sudo systemctl daemon-reload
-        rm -f "$CONFIGURED_SERVICE"
-        echo "  -> Successfully installed $SERVICE_DST"
-    else
-        rm -f "$CONFIGURED_SERVICE"
-        echo "  -> Failed to install service. You can manually run:"
-        echo "     sudo cp $SERVICE_SRC $SERVICE_DST && sudo systemctl daemon-reload"
-    fi
-fi
+[Service]
+Type=simple
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$SCRIPT_DIR/serve.sh
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGINT
+TimeoutStopSec=15s
+LimitNOFILE=65536
+Environment="PATH=/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin"
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload 2>/dev/null || true
+echo "  -> Installed user systemd service: $USER_SYSTEMD_DIR/llama-qwen.service"
 
 # --- 4. Model Weights Check ---
 echo ""
@@ -87,13 +86,14 @@ echo ""
 echo "========================================================"
 echo " Installation Complete!"
 echo "========================================================"
-echo " Service Management:"
-echo "   sudo systemctl enable --now llama-qwen   # Start on boot & launch now"
-echo "   sudo systemctl status llama-qwen         # Check service status"
-echo "   sudo systemctl stop llama-qwen           # Stop service"
+echo " Service Management (No Sudo Needed):"
+echo "   systemctl --user enable --now llama-qwen   # Start on boot & launch now"
+echo "   systemctl --user status llama-qwen         # Check service status"
+echo "   systemctl --user stop llama-qwen           # Stop service"
+echo "   systemctl --user restart llama-qwen        # Restart service"
 echo ""
 echo " Usage:"
-echo "   1. Start server interactively:  llama-serve-qwen"
-echo "   2. Launch Claude Code:          lclaude"
+echo "   1. Launch Claude Code:          lclaude"
+echo "   2. Launch Bot Agent:            lclaude-bot"
 echo "   3. Interactive CLI chat:        llama-qwen"
 echo "========================================================"

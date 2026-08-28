@@ -25,8 +25,10 @@ else
     GPU_LABEL="Dual RTX 5090 (64GB Total VRAM)"
 fi
 
-# Detect Model Stack: Flash-Next (Embedded MTP vs Base) vs Qwen3.8-27B
-if [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf" ]; then
+# Detect Model Stack: Flash-Next (Base vs Embedded MTP) vs Qwen3.8-27B
+ENABLE_MTP="${ENABLE_MTP:-0}"
+
+if [ "$ENABLE_MTP" = "1" ] && [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf" ]; then
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
     MTP_MODE="embedded"
@@ -36,8 +38,14 @@ elif [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_X
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
     MTP_MODE="none"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-$DEFAULT_SPLIT_FLASH}"
+    TENSOR_SPLIT="${TENSOR_SPLIT:-14,17,17}" # 48 layers total (14 on GPU0, 17 on GPU1, 17 on GPU2)
     MODEL_NAME="Qwen3.8-Flash-Next (125B MoE / 512 Experts / QSA)"
+elif [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf" ]; then
+    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
+    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
+    MTP_MODE="none"
+    TENSOR_SPLIT="${TENSOR_SPLIT:-16,16,17}"
+    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE / 512 Experts / QSA - MTP Disabled)"
 else
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-27B-Q8_0.gguf}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/mmproj-Qwen3.8-27B-BF16.gguf}"
@@ -52,7 +60,7 @@ TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/templates/qwen3.8-claude.jinja}"
 # Server Configuration
 PORT="${PORT:-8090}"
 HOST="${HOST:-0.0.0.0}"
-CTX_SIZE="${CTX_SIZE:-160000}" # 160k context (~600 pages of code)
+CTX_SIZE="${CTX_SIZE:-220000}" # 220k context (High-precision long-horizon reasoning)
 N_GPU_LAYERS="${N_GPU_LAYERS:-99}"
 
 echo "========================================================"
@@ -61,9 +69,9 @@ echo "========================================================"
 echo " - Base Model:    $MODEL_FILE"
 echo " - Vision mmproj: $MMPROJ_FILE"
 echo " - Template:      $TEMPLATE_FILE"
-echo " - Context Size:  $CTX_SIZE tokens (256k full)"
-echo " - KV Cache:      Q4_0/Q8_0 (~3.5GB total across 256k ctx)"
-echo " - Layer Split:   Pipelined ($TENSOR_SPLIT layers, TB4 optimized)"
+echo " - Context Size:  $CTX_SIZE tokens"
+echo " - KV Cache:      Q8_0 (Keys) / Q5_0 (Values) — High-Precision Asymmetric Cache"
+echo " - Layer Split:   Pipelined ($TENSOR_SPLIT layers)"
 echo " - Endpoint:      http://$HOST:$PORT"
 echo "========================================================"
 
@@ -86,7 +94,7 @@ elif [ "$MTP_MODE" = "standalone" ] && [ -n "${MTP_FILE:-}" ] && [ -f "$MTP_FILE
         --spec-draft-ngl 99
     )
 else
-    echo " [-] Running standard full-precision QSA decoding."
+    echo " [-] Running standard full-precision QSA decoding (MTP draft disabled for maximum throughput)."
 fi
 
 # Vision Projector
@@ -116,14 +124,16 @@ exec "$LLAMA_SERVER" \
     --tensor-split "$TENSOR_SPLIT" \
     --ctx-size "$CTX_SIZE" \
     --parallel 1 \
-    --batch-size 512 \
-    --ubatch-size 256 \
+    --batch-size 2048 \
+    --ubatch-size 512 \
     --flash-attn on \
-    --cache-type-k q4_0 \
-    --cache-type-v q8_0 \
+    --cache-type-k q8_0 \
+    --cache-type-v q5_0 \
     --alias "qwen3.8-flash-next,qwen3.8-27b,claude-3-5-sonnet-20241022,claude-3-5-haiku-20241022,claude-3-opus-20240229,claude-sonnet-4-20250514,default" \
     --reasoning on \
     --reasoning-format deepseek \
+    --reasoning-budget 8192 \
+    --context-shift \
     --metrics \
     "${EXTRA_ARGS[@]}" \
     "$@"

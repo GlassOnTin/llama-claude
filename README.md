@@ -44,7 +44,7 @@ flowchart TD
 | **Speculative Decoding** | Multi-Token Prediction (MTP 3-draft) | **1.6× – 2.4× generation speedup** (75–100+ tok/s) |
 | **Multi-GPU Parallelism**| `--split-mode layer --tensor-split 30,34` | Eliminates TB4 PCIe bus bottlenecks; balances desktop VRAM |
 | **Reasoning Stream** | `--reasoning on --reasoning-format deepseek` | Converts `<think>` tags into native Anthropic Thinking blocks |
-| **Compaction Headroom** | `CLAUDE_CODE_MAX_CONTEXT_TOKENS=220000` | 42k token buffer guaranteeing clean auto/manual `/compact` |
+| **Compaction Headroom** | `CLAUDE_CODE_MAX_CONTEXT_TOKENS=160000` | 60k token buffer guaranteeing clean auto/manual `/compact` |
 
 ---
 
