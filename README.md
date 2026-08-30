@@ -1,6 +1,6 @@
-# llama-claude: Dual RTX 5090 Local AI Engine for Claude Code
+# llama-claude: Multi-GPU Local AI Engine for Claude Code
 
-High-performance local AI inference engine powering **Anthropic Claude Code** using **Qwen3.8-27B (Vision + MTP)** distributed across dual 32GB NVIDIA GeForce RTX 5090 GPUs (64 GB total VRAM).
+High-performance local AI inference engine powering **Anthropic Claude Code** using **Qwen3.8-Flash-Next (125B MoE / Vision / 256k Context)** and **Qwen3.8-27B (Dense / MTP)** distributed across **Triple 32GB NVIDIA GeForce RTX 5090 GPUs (96 GB Total VRAM)** with system RAM expert offloading.
 
 ---
 
@@ -8,7 +8,7 @@ High-performance local AI inference engine powering **Anthropic Claude Code** us
 
 ```mermaid
 flowchart TD
-    subgraph Host["Ubuntu Linux Workstation (96GB RAM)"]
+    subgraph Host["Ubuntu Linux Workstation (96GB Host RAM)"]
         CC["Anthropic Claude Code CLI<br/>(lclaude / lclaude-bot)"]
         LS["llama-server (:8090)<br/>FlashAttention + MoE Offload + Jinja ChatML"]
     end
@@ -46,32 +46,43 @@ flowchart TD
 
 | Feature | Implementation | Benefit |
 | :--- | :--- | :--- |
-| **Model** | Qwen3.8-27B (Q8_0, 26.9B params) | Bit-exact quality to FP16 (<0.001 ppl loss) |
-| **Multimodal Vision** | `mmproj-Qwen3.8-27B-BF16.gguf` | Image understanding & screenshot analysis in Claude Code |
-| **Context Window** | **262,144 tokens (256k)** | Full repository awareness |
-| **KV Cache Footprint** | `Q8_0` (~4.7 GB total at 262k) | Only 16 of 64 layers carry KV cache due to Hybrid Attention |
-| **Speculative Decoding** | Multi-Token Prediction (MTP 3-draft) | **1.6× – 2.4× generation speedup** (75–100+ tok/s) |
-| **Multi-GPU Parallelism**| `--split-mode layer --tensor-split 30,34` | Eliminates TB4 PCIe bus bottlenecks; balances desktop VRAM |
-| **Reasoning Stream** | `--reasoning on --reasoning-format deepseek` | Converts `<think>` tags into native Anthropic Thinking blocks |
-| **Compaction Headroom** | `CLAUDE_CODE_MAX_CONTEXT_TOKENS=160000` | 60k token buffer guaranteeing clean auto/manual `/compact` |
+| **Default Model** | `Qwen3.8-Flash-Next-UD-Q4_K_XL` (125B MoE, 512 experts, 10 active) | State-of-the-art reasoning and coding quality at scale |
+| **Multimodal Vision** | `mmproj-BF16.gguf` | Image understanding, diagram parsing & screenshot analysis in Claude Code |
+| **Context Window** | **262,144 tokens (256k)** | Massive whole-repository context awareness |
+| **Hybrid KV Footprint** | `Q8_0` (~3.5 GB total across all GPUs at 262k) | Only 12 of 48 layers carry KV cache due to Hybrid SSM / Quasi-State Attention |
+| **Expert RAM Offloading** | `--n-cpu-moe 8` (~6.8 GB in RAM) | Spills only 8 layers to RAM; 40 layers run 100% in VRAM for high generation speeds (~42–46 tok/s) |
+| **Multi-GPU Parallelism** | `--split-mode layer --tensor-split 18,15,15` | Pipeline parallelism over Thunderbolt/eGPU links; eliminates bus bottlenecks |
+| **Reasoning Stream** | `--reasoning on --reasoning-format deepseek` | Converts `<think>` tags into native Anthropic Thinking blocks in Claude Code |
+| **Compaction Headroom** | `CLAUDE_CODE_MAX_CONTEXT_TOKENS=220000` | 42k token buffer guaranteeing clean auto/manual `/compact` cycles |
 
 ---
 
-## 1. Multi-GPU Engineering on Thunderbolt 4
+## 1. Multi-GPU Engineering on Triple RTX 5090 & eGPU Links
 
-### The Thunderbolt Bandwidth Challenge
-The second RTX 5090 is housed in an external **GIGABYTE AORUS RTX5090 AI-BOX** connected via Thunderbolt 4 / USB4 (40 Gb/s ≈ 3.2 GB/s usable).
-* **Row Splitting (`-sm row` / Tensor Parallelism)**: Requires all-reduce synchronization across every attention head in all 64 layers (64 syncs per token). Over a 40 Gb/s TB4 cable, this saturates the bus and causes severe latency.
-* **Layer Splitting (`-sm layer` / Pipeline Parallelism)**: Layers 0–29 run on GPU 0; layers 30–63 run on GPU 1. Cross-GPU transmission occurs **only once per token** (a single ~200 KB hidden-state tensor between layers 29 and 30). This keeps TB4 PCIe utilization under 2%.
+### The Interconnect Bandwidth Challenge
+The setup uses three RTX 5090 32GB GPUs: one internal PCIe Gen 5 card and two external enclosures connected via Thunderbolt 4 / USB4 (40 Gb/s ≈ 3.2 GB/s usable bandwidth).
 
-### Asymmetric VRAM Balancing (`--tensor-split 30,34`)
-* **GPU 0 (Internal)**: Drives the desktop display server and background apps (~3.2 GB allocated).
-* **GPU 1 (External)**: 100% dedicated compute.
-* Setting `--tensor-split 30,34` assigns 30 layers to GPU 0 and 34 layers to GPU 1, perfectly balancing free memory on both cards to ~28.5 GB headroom each.
+* **Row Splitting (`-sm row` / Tensor Parallelism)**: Requires all-reduce synchronization across every attention head in all 48 layers (48 syncs per token). Over 40 Gb/s TB4 cables, this saturates the bus and causes severe latency.
+* **Layer Splitting (`-sm layer` / Pipeline Parallelism)**: Layers are partitioned across cards (`18,15,15`). Cross-GPU transmission occurs **only once per handoff per token** (a single ~200 KB hidden-state tensor between GPU boundaries). This keeps TB4 PCIe utilization under 2%.
+
+### Balanced VRAM & Layer Split (`--tensor-split 18,15,15`)
+* **GPU 0 (Internal)**: Carries Wayland desktop (~1.1 GB), vision projector (`mmproj-BF16`, ~0.9 GB), and layers 0–17 (8 layers with experts offloaded to RAM, 10 layers with experts in VRAM) = **~24.6 GB used, ~8.0 GB free**.
+* **GPU 1 (External AI-BOX)**: Layers 18–32 with full MoE experts in VRAM = **~27.9 GB used, ~4.7 GB free**.
+* **GPU 2 (External eGPU)**: Layers 33–47 with full MoE experts in VRAM = **~27.2 GB used, ~5.4 GB free**.
 
 ---
 
-## 2. Host System Optimization (Ubuntu Linux)
+## 2. Qwen3.8-Flash-Next Hybrid SSM & 256k Context Math
+
+`Qwen3.8-Flash-Next` utilizes a hybrid architecture pairing **linear recurrent SSM states (Quasi-State Attention)** with full self-attention:
+* **Only 12 of the 48 transformer layers maintain a standard KV cache**.
+* **KV Cache VRAM at 256k Tokens**:
+  * **Q8_0 KV Cache** (`--cache-type-k q8_0 --cache-type-v q8_0`): **~3.5 GB total (~1.2 GB per GPU)**.
+  * Recurrent SSM layers maintain fixed-size state vectors that do not grow with sequence length.
+
+---
+
+## 3. Host System Optimization (Ubuntu Linux)
 
 Thunderbolt eGPUs on Linux require specific kernel and PCIe settings to prevent GSP firmware timeouts (`Xid 175` / `Sysmembar` drops) caused by Active State Power Management (ASPM):
 
@@ -97,7 +108,7 @@ sudo ./setup-host.sh
    options nvidia NVreg_RegistryDwords="PowerMizerEnable=0x1;PerfLevelSrc=0x2222;RMDisablePcieGenSpeedChange=1"
    ```
 4. **Hotplug udev Automation (`/etc/udev/rules.d/99-nvidia-hotplug.rules`)**:
-   Ensures `/dev/nvidia1` is created and `nvidia-persistenced` is notified whenever the AI-BOX is attached:
+   Ensures external GPUs are created and `nvidia-persistenced` is notified whenever attached:
    ```udev
    ACTION=="add|bind", SUBSYSTEM=="pci", DRIVERS=="nvidia", ATTR{vendor}=="0x10de", RUN+="/sbin/ub-device-create"
    ACTION=="add|bind", SUBSYSTEM=="pci", DRIVERS=="nvidia", ATTR{vendor}=="0x10de", RUN+="/bin/systemctl try-restart nvidia-persistenced.service"
@@ -105,33 +116,9 @@ sudo ./setup-host.sh
 
 ---
 
-## 3. Qwen3.8 Hybrid Attention & 262k Context Math
+## 4. Claude Code Integration & Chat Template
 
-Qwen3.8 utilizes a hybrid architecture pairing **Gated DeltaNet linear attention** with standard full self-attention:
-* **Only 16 of the 64 transformer layers maintain a standard KV cache**.
-* **KV Cache VRAM at 262k Tokens**:
-  * **FP16 KV Cache**: ~9.4 GB total (~4.7 GB/GPU)
-  * **Q8_0 KV Cache** (`--cache-type-k q8_0 --cache-type-v q8_0`): **~4.7 GB total (~2.35 GB/GPU)**
-  * **Q4_0 KV Cache**: ~2.4 GB total (~1.2 GB/GPU)
-
-With 27.1 GB total model weights and a 4.7 GB Q8_0 KV cache, the entire 256k context model consumes only **~32 GB of your 64 GB total VRAM**, leaving >30 GB free.
-
----
-
-## 4. Multi-Token Prediction (MTP) Speculative Decoding
-
-Qwen3.8 incorporates native Multi-Token Prediction draft layers. In this setup:
-* Base Model: `Qwen3.8-27B-Q8_0.gguf` (~26.6 GB)
-* MTP Draft Model: `mtp-Qwen3.8-27B-Q8_0.gguf` (~2.95 GB, 18 draft tensors)
-* Converted from official verified upstream commit: `PRIMARY=1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`
-
-The MTP head speculatively generates 3 future tokens per step (`--spec-draft-n-max 3`), validated by the base model in a single batch pass, boosting generation throughput from ~50 tok/s to **75–100+ tok/s**.
-
----
-
-## 5. Claude Code Integration & Chat Template
-
-### Chat Template (`templates/qwen3.8-claude.jinja`)
+### Custom Chat Template (`templates/qwen3.8-claude.jinja`)
 Standard Qwen templates reject multi-turn system prompts with an `HTTP 500: System message must be at the beginning`. The custom template in `templates/` fixes this by:
 * Allowing system messages at any turn index without throwing exceptions.
 * Correctly formatting tool calls and tool responses for Claude Code.
@@ -143,51 +130,44 @@ Instead of dumping raw `<think>...</think>` text into conversation history, `lla
 
 ## Quickstart
 
-### Option A: One-Step Automated Installation
-```bash
-./install.sh
-```
+### 1. Launch Server
 
-### Option B: Manual Setup
+* **Via systemd service (recommended):**
+  ```bash
+  systemctl --user start llama-qwen.service
+  systemctl --user status llama-qwen.service
+  ```
 
-#### 1. Download Model & MTP Weights
-```bash
-./download.sh
-```
+* **Via terminal script:**
+  ```bash
+  ./serve.sh               # Starts default Qwen3.8-Flash-Next (125B MoE, 256k context)
+  MODEL_TYPE=27b ./serve.sh # Switch to Qwen3.8-27B (Dense + MTP)
+  ```
 
-#### 2. Start the Dual-GPU Server
-Run directly in a terminal:
-```bash
-./serve.sh
-```
-
-Or install and start as a **systemd service**:
-```bash
-sudo cp systemd/llama-qwen.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now llama-qwen
-```
-
-#### 3. Add Shell Integration to `~/.bashrc`
+### 2. Shell Integration (`~/.bashrc`)
+Add the module to your `~/.bashrc`:
 ```bash
 [ -f "$HOME/Code/llama-claude/bash_module.sh" ] && . "$HOME/Code/llama-claude/bash_module.sh"
 ```
 
-#### 4. Launch Claude Code
+### 3. Launch Claude Code
 ```bash
-lclaude
+lclaude          # Interactive Claude Code against local endpoint
+lclaude-bot      # Isolated haven-bot maintainer agent
 ```
 
 ---
 
-## Benchmarks (`llama-bench`)
+## Live Workload Telemetry
 
 ```text
-CUDA Devices: 2 (RTX 5090 32GB x 2 = 64,213 MiB VRAM)
-Target Arch:  Blackwell sm_120 (CUDA 13.3)
-Model:        Qwen3.8-27B Q8_0 (26.9B params)
+Hardware:          Triple NVIDIA GeForce RTX 5090 (3x 32GB = 96GB Total VRAM)
+Target Arch:       Blackwell sm_120 (CUDA 13.2 / llama.cpp b10666)
+Model:             Qwen3.8-Flash-Next-UD-Q4_K_XL (125B MoE, 512 experts, 10 active)
+Context Window:    262,144 tokens (256k Full Context)
+RAM Expert Spillage: 8 layers (~6.8 GB in system RAM)
 
-Prompt Processing (pp64):  1,528 – 1,638 tokens/sec
-Generation Baseline (tg16): 48.5 – 50.0 tokens/sec
-Generation with MTP (3-tok): 75.0 – 105.0 tokens/sec
+Prompt Processing: ~350 tokens/sec
+Generation Speed:  41.8 – 45.6 tokens/sec
+KV Cache at 256k:  ~3.5 GB total VRAM footprint
 ```
