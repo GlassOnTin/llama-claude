@@ -32,7 +32,7 @@ if [ "$ENABLE_MTP" = "1" ] && [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
     MTP_MODE="embedded"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-15,17,17}" # 49 layers total (15 on display GPU0, 17 on GPU1, 17 on GPU2)
+    TENSOR_SPLIT="${TENSOR_SPLIT:-15,18,16}" # 49 layers total (15 on GPU0 + mmproj, 18 on GPU1, 16 on GPU2 + draft head)
     MODEL_NAME="Qwen3.8-Flash-Next (125B MoE + Embedded MTP Draft Head)"
 elif [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf" ]; then
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
@@ -60,7 +60,7 @@ TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/templates/qwen3.8-claude.jinja}"
 # Server Configuration
 PORT="${PORT:-8090}"
 HOST="${HOST:-0.0.0.0}"
-CTX_SIZE="${CTX_SIZE:-160000}" # 160k context matching CLAUDE_CODE_MAX_CONTEXT_TOKENS with MTP VRAM headroom
+CTX_SIZE="${CTX_SIZE:-131072}" # 128k context with VRAM headroom for compute buffer allocation
 N_GPU_LAYERS="${N_GPU_LAYERS:-99}"
 
 echo "========================================================"
@@ -79,18 +79,17 @@ EXTRA_ARGS=()
 
 # Multi-Token Prediction (MTP) Speculative Decoding
 if [ "$MTP_MODE" = "embedded" ]; then
-    echo " [+] Embedded MTP Draft Head detected: Enabling speculative decoding (1 draft token)"
+    echo " [+] Embedded MTP Draft Head detected: Enabling speculative decoding (3 draft tokens)"
     EXTRA_ARGS+=(
         --spec-type draft-mtp
-        --spec-draft-n-max 1
-        --spec-draft-p-min 0.45
+        --spec-draft-n-max 3
     )
 elif [ "$MTP_MODE" = "standalone" ] && [ -n "${MTP_FILE:-}" ] && [ -f "$MTP_FILE" ]; then
-    echo " [+] MTP Draft Model detected: Enabling speculative decoding (1 draft token)"
+    echo " [+] MTP Draft Model detected: Enabling speculative decoding (3 draft tokens)"
     EXTRA_ARGS+=(
         --spec-draft-model "$MTP_FILE"
         --spec-type draft-mtp
-        --spec-draft-n-max 1
+        --spec-draft-n-max 3
         --spec-draft-ngl 99
     )
 else
@@ -98,9 +97,12 @@ else
 fi
 
 # Vision Projector
-if [ -f "$MMPROJ_FILE" ]; then
+ENABLE_VISION="${ENABLE_VISION:-1}"
+if [ "$ENABLE_VISION" = "1" ] && [ -n "${MMPROJ_FILE:-}" ] && [ -f "$MMPROJ_FILE" ]; then
     echo " [+] Vision Projector detected: Enabling multimodal support"
     EXTRA_ARGS+=(--mmproj "$MMPROJ_FILE")
+else
+    echo " [-] Vision projector disabled: Enabling prefix cache-reuse and context-shifting"
 fi
 
 # Custom Chat Template
