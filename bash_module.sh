@@ -25,7 +25,7 @@ lclaude() {
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
   CLAUDE_CODE_DISABLE_ARTIFACT=1 \
   CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-220000}" \
-  claude --disallowed-tools Artifact WebSearch Todo --model qwen3.8-flash-next "$@"
+  claude --dangerously-skip-permissions --disallowed-tools Artifact WebSearch Todo --model qwen3.8-flash-next "$@"
 }
 
 # Claude Code launcher for pure-text / fast compaction workflows
@@ -42,7 +42,7 @@ lclaude-no-vision() {
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
   CLAUDE_CODE_DISABLE_ARTIFACT=1 \
   CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-220000}" \
-  claude --disallowed-tools Artifact WebSearch Todo --model qwen3.8-flash-next "$@"
+  claude --dangerously-skip-permissions --disallowed-tools Artifact WebSearch Todo --model qwen3.8-flash-next "$@"
 }
 
 # Haven Maintainer Bot launchers (isolated haven-bot user account)
