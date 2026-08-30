@@ -23,8 +23,9 @@ lclaude() {
   ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8-flash-next \
   ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-flash-next \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+  CLAUDE_CODE_DISABLE_ARTIFACT=1 \
   CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-220000}" \
-  claude --model qwen3.8-flash-next "$@"
+  claude --disallowed-tools Artifact --model qwen3.8-flash-next "$@"
 }
 
 # Claude Code launcher for pure-text / fast compaction workflows
@@ -39,8 +40,9 @@ lclaude-no-vision() {
   ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8-flash-next \
   ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-flash-next \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+  CLAUDE_CODE_DISABLE_ARTIFACT=1 \
   CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-220000}" \
-  claude --model qwen3.8-flash-next "$@"
+  claude --disallowed-tools Artifact --model qwen3.8-flash-next "$@"
 }
 
 # Haven Maintainer Bot launchers (isolated haven-bot user account)
