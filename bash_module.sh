@@ -4,9 +4,10 @@
 # ==============================================================================
 
 # Aliases to control the local server
-alias llama-serve="$HOME/Code/llama-claude/serve.sh"
-alias llama-serve-qwen="$HOME/Code/llama-claude/serve.sh"
+alias llama-serve="ENABLE_VISION=1 $HOME/Code/llama-claude/serve.sh"
+alias llama-serve-vision="ENABLE_VISION=1 $HOME/Code/llama-claude/serve.sh"
 alias llama-serve-no-vision="ENABLE_VISION=0 $HOME/Code/llama-claude/serve.sh"
+alias llama-serve-qwen="$HOME/Code/llama-claude/serve.sh"
 alias llama-qwen="$HOME/Code/llama-claude/cli.sh"
 alias llama-dl-qwen="$HOME/Code/llama-claude/download.sh"
 
