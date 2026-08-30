@@ -96,8 +96,8 @@ else
     echo " [-] Running standard full-precision QSA decoding (MTP draft disabled for maximum throughput)."
 fi
 
-# Vision Projector
-ENABLE_VISION="${ENABLE_VISION:-1}"
+# Vision Projector (Default: 0 for fast prefix cache-reuse, set ENABLE_VISION=1 for multimodal)
+ENABLE_VISION="${ENABLE_VISION:-0}"
 if [ "$ENABLE_VISION" = "1" ] && [ -n "${MMPROJ_FILE:-}" ] && [ -f "$MMPROJ_FILE" ]; then
     echo " [+] Vision Projector detected: Enabling multimodal support"
     EXTRA_ARGS+=(--mmproj "$MMPROJ_FILE")
