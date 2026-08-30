@@ -17,14 +17,14 @@ lclaude() {
   ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:8090}" \
   ANTHROPIC_API_KEY=llama-local \
   ANTHROPIC_AUTH_TOKEN=llama-local \
-  ANTHROPIC_MODEL=qwen3.8-27b \
-  ANTHROPIC_SMALL_FAST_MODEL=qwen3.8-27b \
-  ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3.8-27b \
-  ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8-27b \
-  ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-27b \
+  ANTHROPIC_MODEL=qwen3.8-flash-next \
+  ANTHROPIC_SMALL_FAST_MODEL=qwen3.8-flash-next \
+  ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3.8-flash-next \
+  ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8-flash-next \
+  ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-flash-next \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
   CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-220000}" \
-  claude --model qwen3.8-27b "$@"
+  claude --model qwen3.8-flash-next "$@"
 }
 
 # Claude Code launcher for pure-text / fast compaction workflows
@@ -33,14 +33,14 @@ lclaude-no-vision() {
   ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:8090}" \
   ANTHROPIC_API_KEY=llama-local \
   ANTHROPIC_AUTH_TOKEN=llama-local \
-  ANTHROPIC_MODEL=qwen3.8-27b \
-  ANTHROPIC_SMALL_FAST_MODEL=qwen3.8-27b \
-  ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3.8-27b \
-  ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8-27b \
-  ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-27b \
+  ANTHROPIC_MODEL=qwen3.8-flash-next \
+  ANTHROPIC_SMALL_FAST_MODEL=qwen3.8-flash-next \
+  ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3.8-flash-next \
+  ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8-flash-next \
+  ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-flash-next \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
   CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-220000}" \
-  claude --model qwen3.8-27b "$@"
+  claude --model qwen3.8-flash-next "$@"
 }
 
 # Haven Maintainer Bot launchers (isolated haven-bot user account)
