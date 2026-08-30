@@ -41,3 +41,8 @@ lclaude-no-vision() {
   CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-50000}" \
   claude --model qwen3.8-flash-next "$@"
 }
+
+# Haven Maintainer Bot launchers (isolated haven-bot user account)
+alias lclaude-bot="sudo -u haven-bot /home/haven-bot/run-agent.sh"
+alias lclaude-bot-no-vision="sudo -u haven-bot /home/haven-bot/run-agent.sh"
+alias lclaude-no-vision-bot="sudo -u haven-bot /home/haven-bot/run-agent.sh"
