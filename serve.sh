@@ -25,18 +25,18 @@ else
     GPU_LABEL="Dual RTX 5090 (64GB Total VRAM)"
 fi
 
-# Detect Model Stack: Qwen3.8-27B (Default: 256k context + 85% MTP) vs Flash-Next
-MODEL_TYPE="${MODEL_TYPE:-27b}"
+# Detect Model Stack: Qwen3.8-Flash-Next (Default: 125B MoE / 256k context / 8-layer RAM offload) vs 27B
+MODEL_TYPE="${MODEL_TYPE:-flash}"
+N_CPU_MOE="${N_CPU_MOE:-8}"
 
-if [ "$MODEL_TYPE" = "27b" ] || [ ! -d "$MODEL_DIR/Qwen3.8-Flash-Next" ]; then
-    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-27B-Q8_0.gguf}"
-    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/mmproj-Qwen3.8-27B-BF16.gguf}"
-    MTP_FILE="${MTP_FILE:-$MODEL_DIR/mtp-Qwen3.8-27B-Q8_0.gguf}"
-    MTP_MODE="standalone"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-$DEFAULT_SPLIT_27B}"
-    CTX_SIZE="${CTX_SIZE:-262144}" # 256k full context
+if [ "$MODEL_TYPE" = "flash" ] || [ "$MODEL_TYPE" = "flash-next" ]; then
+    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
+    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
+    MTP_MODE="none"
+    TENSOR_SPLIT="${TENSOR_SPLIT:-18,15,15}"
+    CTX_SIZE="${CTX_SIZE:-262144}"
     CACHE_TYPE_V="${CACHE_TYPE_V:-q8_0}"
-    MODEL_NAME="Qwen3.8-27B (Dense Q8_0 + Standalone MTP Draft Head)"
+    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE / 512 Experts / 8 RAM Layers)"
 elif [ "$MODEL_TYPE" = "flash-mtp" ] && [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf" ]; then
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
@@ -46,13 +46,14 @@ elif [ "$MODEL_TYPE" = "flash-mtp" ] && [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q
     CACHE_TYPE_V="${CACHE_TYPE_V:-q5_0}"
     MODEL_NAME="Qwen3.8-Flash-Next (125B MoE + Embedded MTP Draft Head)"
 else
-    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
-    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
-    MTP_MODE="none"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-14,17,17}"
-    CTX_SIZE="${CTX_SIZE:-131072}"
-    CACHE_TYPE_V="${CACHE_TYPE_V:-q5_0}"
-    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE / 512 Experts / QSA)"
+    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-27B-Q8_0.gguf}"
+    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/mmproj-Qwen3.8-27B-BF16.gguf}"
+    MTP_FILE="${MTP_FILE:-$MODEL_DIR/mtp-Qwen3.8-27B-Q8_0.gguf}"
+    MTP_MODE="standalone"
+    TENSOR_SPLIT="${TENSOR_SPLIT:-$DEFAULT_SPLIT_27B}"
+    CTX_SIZE="${CTX_SIZE:-262144}" # 256k full context
+    CACHE_TYPE_V="${CACHE_TYPE_V:-q8_0}"
+    MODEL_NAME="Qwen3.8-27B (Dense Q8_0 + Standalone MTP Draft Head)"
 fi
 
 TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/templates/qwen3.8-claude.jinja}"
@@ -96,13 +97,19 @@ else
     echo " [-] Running standard full-precision QSA decoding (MTP draft disabled for maximum throughput)."
 fi
 
-# Vision Projector (Default: 0 for fast prefix cache-reuse, set ENABLE_VISION=1 for multimodal)
-ENABLE_VISION="${ENABLE_VISION:-0}"
+# Vision Projector (Default: 1 for multimodal support, set ENABLE_VISION=0 for pure-text)
+ENABLE_VISION="${ENABLE_VISION:-1}"
 if [ "$ENABLE_VISION" = "1" ] && [ -n "${MMPROJ_FILE:-}" ] && [ -f "$MMPROJ_FILE" ]; then
     echo " [+] Vision Projector detected: Enabling multimodal support"
     EXTRA_ARGS+=(--mmproj "$MMPROJ_FILE")
 else
     echo " [-] Vision projector disabled: Enabling prefix cache-reuse and context-shifting"
+fi
+
+# CPU MoE Offload
+if [ -n "${N_CPU_MOE:-}" ] && [ "$N_CPU_MOE" -gt 0 ]; then
+    echo " [+] CPU MoE Offloading: First $N_CPU_MOE layers' experts offloaded to system RAM"
+    EXTRA_ARGS+=(--n-cpu-moe "$N_CPU_MOE")
 fi
 
 # Custom Chat Template
