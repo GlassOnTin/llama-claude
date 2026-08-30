@@ -8,27 +8,36 @@ High-performance local AI inference engine powering **Anthropic Claude Code** us
 
 ```mermaid
 flowchart TD
-    subgraph Host["Ubuntu Linux Workstation (64GB RAM)"]
-        CC["Anthropic Claude Code CLI\n(lclaude)"]
-        LS["llama-server (:8090)\nFlashAttention-3 + MTP + Jinja ChatML"]
+    subgraph Host["Ubuntu Linux Workstation (96GB RAM)"]
+        CC["Anthropic Claude Code CLI<br/>(lclaude / lclaude-bot)"]
+        LS["llama-server (:8090)<br/>FlashAttention + MoE Offload + Jinja ChatML"]
     end
 
     subgraph GPU0["GPU 0: Internal RTX 5090 (32GB VRAM)"]
-        L0["Layers 0 – 29\n(~13.3 GB)"]
-        K0["KV Cache Partition\n(~2.35 GB @ 262k Q8)"]
-        UI["Desktop / Xorg\n(~1.5 GB)"]
+        L0["Layers 0 – 17<br/>(~24.6 GB with mmproj)"]
+        K0["KV Cache Partition<br/>(@ 262k Q8)"]
+        UI["Desktop / Wayland<br/>(~1.1 GB)"]
     end
 
     subgraph GPU1["GPU 1: AORUS AI-BOX RTX 5090 (32GB VRAM)"]
-        L1["Layers 30 – 63\n(~13.3 GB)"]
-        K1["KV Cache Partition\n(~2.35 GB @ 262k Q8)"]
-        MTP["MTP Speculative Head\n(~2.95 GB)"]
-        VIS["Vision mmproj\n(~0.87 GB)"]
+        L1["Layers 18 – 32<br/>(~27.9 GB)"]
+        K1["KV Cache Partition<br/>(@ 262k Q8)"]
     end
 
-    CC -->|Anthropic Messages API\n/v1/messages| LS
-    LS -->|PCIe Gen 5| GPU0
-    LS -->|Thunderbolt 4 / USB4 (40 Gb/s)\nPipelined Layer Handoff| GPU1
+    subgraph GPU2["GPU 2: eGPU RTX 5090 (32GB VRAM)"]
+        L2["Layers 33 – 47<br/>(~27.2 GB)"]
+        K2["KV Cache Partition<br/>(@ 262k Q8)"]
+    end
+
+    subgraph RAM["System RAM (96GB Host RAM)"]
+        EX["8 Layers MoE Experts Offload<br/>(~6.8 GB in RAM)"]
+    end
+
+    CC -->|"Anthropic Messages API (/v1/messages)"| LS
+    LS -->|"PCIe Gen 5"| GPU0
+    LS -->|"Thunderbolt 4 / USB4 (Pipelined Handoff)"| GPU1
+    LS -->|"eGPU Link (Pipelined Handoff)"| GPU2
+    LS -->|"CPU MoE Offload"| RAM
 ```
 
 ---
