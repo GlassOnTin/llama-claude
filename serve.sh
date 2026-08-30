@@ -26,13 +26,13 @@ else
 fi
 
 # Detect Model Stack: Flash-Next (Base vs Embedded MTP) vs Qwen3.8-27B
-ENABLE_MTP="${ENABLE_MTP:-0}"
+ENABLE_MTP="${ENABLE_MTP:-1}"
 
 if [ "$ENABLE_MTP" = "1" ] && [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf" ]; then
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
     MTP_MODE="embedded"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-15,17,17}" # 49 layers total (15 on GPU0, 17 on GPU1, 17 on GPU2)
+    TENSOR_SPLIT="${TENSOR_SPLIT:-14,18,17}" # 49 layers total (14 on display GPU0, 18 on GPU1, 17 on GPU2)
     MODEL_NAME="Qwen3.8-Flash-Next (125B MoE + Embedded MTP Draft Head)"
 elif [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf" ]; then
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
@@ -60,7 +60,7 @@ TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/templates/qwen3.8-claude.jinja}"
 # Server Configuration
 PORT="${PORT:-8090}"
 HOST="${HOST:-0.0.0.0}"
-CTX_SIZE="${CTX_SIZE:-220000}" # 220k context (High-precision long-horizon reasoning)
+CTX_SIZE="${CTX_SIZE:-160000}" # 160k context matching CLAUDE_CODE_MAX_CONTEXT_TOKENS with MTP VRAM headroom
 N_GPU_LAYERS="${N_GPU_LAYERS:-99}"
 
 echo "========================================================"
@@ -79,18 +79,18 @@ EXTRA_ARGS=()
 
 # Multi-Token Prediction (MTP) Speculative Decoding
 if [ "$MTP_MODE" = "embedded" ]; then
-    echo " [+] Embedded MTP Draft Head detected: Enabling speculative decoding (3 draft tokens)"
+    echo " [+] Embedded MTP Draft Head detected: Enabling speculative decoding (1 draft token)"
     EXTRA_ARGS+=(
         --spec-type draft-mtp
-        --spec-draft-n-max 3
-        --spec-draft-p-min 0.75
+        --spec-draft-n-max 1
+        --spec-draft-p-min 0.45
     )
 elif [ "$MTP_MODE" = "standalone" ] && [ -n "${MTP_FILE:-}" ] && [ -f "$MTP_FILE" ]; then
-    echo " [+] MTP Draft Model detected: Enabling speculative decoding (3 draft tokens)"
+    echo " [+] MTP Draft Model detected: Enabling speculative decoding (1 draft token)"
     EXTRA_ARGS+=(
         --spec-draft-model "$MTP_FILE"
         --spec-type draft-mtp
-        --spec-draft-n-max 3
+        --spec-draft-n-max 1
         --spec-draft-ngl 99
     )
 else
@@ -124,15 +124,19 @@ exec "$LLAMA_SERVER" \
     --tensor-split "$TENSOR_SPLIT" \
     --ctx-size "$CTX_SIZE" \
     --parallel 1 \
-    --batch-size 2048 \
-    --ubatch-size 512 \
+    --batch-size 4096 \
+    --ubatch-size 1024 \
+    --cache-reuse 256 \
     --flash-attn on \
     --cache-type-k q8_0 \
     --cache-type-v q5_0 \
     --alias "qwen3.8-flash-next,qwen3.8-27b,claude-3-5-sonnet-20241022,claude-3-5-haiku-20241022,claude-3-opus-20240229,claude-sonnet-4-20250514,default" \
     --reasoning on \
     --reasoning-format deepseek \
-    --reasoning-budget 8192 \
+    --reasoning-budget 2048 \
+    --temp 0.2 \
+    --top-p 0.95 \
+    --min-p 0.0 \
     --context-shift \
     --metrics \
     "${EXTRA_ARGS[@]}" \
