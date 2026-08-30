@@ -32,7 +32,7 @@ if [ "$ENABLE_MTP" = "1" ] && [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
     MTP_MODE="embedded"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-14,18,17}" # 49 layers total (14 on display GPU0, 18 on GPU1, 17 on GPU2)
+    TENSOR_SPLIT="${TENSOR_SPLIT:-15,17,17}" # 49 layers total (15 on display GPU0, 17 on GPU1, 17 on GPU2)
     MODEL_NAME="Qwen3.8-Flash-Next (125B MoE + Embedded MTP Draft Head)"
 elif [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf" ]; then
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
@@ -124,8 +124,8 @@ exec "$LLAMA_SERVER" \
     --tensor-split "$TENSOR_SPLIT" \
     --ctx-size "$CTX_SIZE" \
     --parallel 1 \
-    --batch-size 4096 \
-    --ubatch-size 1024 \
+    --batch-size 2048 \
+    --ubatch-size 512 \
     --cache-reuse 256 \
     --flash-attn on \
     --cache-type-k q8_0 \
