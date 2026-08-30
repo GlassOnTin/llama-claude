@@ -125,7 +125,7 @@ exec "$LLAMA_SERVER" \
     --ctx-size "$CTX_SIZE" \
     --parallel 1 \
     --batch-size 2048 \
-    --ubatch-size 512 \
+    --ubatch-size 1024 \
     --cache-reuse 256 \
     --flash-attn on \
     --cache-type-k q8_0 \
