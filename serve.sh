@@ -25,34 +25,34 @@ else
     GPU_LABEL="Dual RTX 5090 (64GB Total VRAM)"
 fi
 
-# Detect Model Stack: Flash-Next (Base vs Embedded MTP) vs Qwen3.8-27B
-ENABLE_MTP="${ENABLE_MTP:-0}"
+# Detect Model Stack: Qwen3.8-27B (Default: 256k context + 85% MTP) vs Flash-Next
+MODEL_TYPE="${MODEL_TYPE:-27b}"
 
-if [ "$ENABLE_MTP" = "1" ] && [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf" ]; then
-    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
-    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
-    MTP_MODE="embedded"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-15,18,16}" # 49 layers total (15 on GPU0 + mmproj, 18 on GPU1, 16 on GPU2 + draft head)
-    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE + Embedded MTP Draft Head)"
-elif [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf" ]; then
-    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
-    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
-    MTP_MODE="none"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-14,17,17}" # 48 layers total (14 on GPU0, 17 on GPU1, 17 on GPU2)
-    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE / 512 Experts / QSA)"
-elif [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf" ]; then
-    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
-    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
-    MTP_MODE="none"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-16,16,17}"
-    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE / 512 Experts / QSA - MTP Disabled)"
-else
+if [ "$MODEL_TYPE" = "27b" ] || [ ! -d "$MODEL_DIR/Qwen3.8-Flash-Next" ]; then
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-27B-Q8_0.gguf}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/mmproj-Qwen3.8-27B-BF16.gguf}"
     MTP_FILE="${MTP_FILE:-$MODEL_DIR/mtp-Qwen3.8-27B-Q8_0.gguf}"
     MTP_MODE="standalone"
     TENSOR_SPLIT="${TENSOR_SPLIT:-$DEFAULT_SPLIT_27B}"
-    MODEL_NAME="Qwen3.8-27B (Dense Q8_0)"
+    CTX_SIZE="${CTX_SIZE:-262144}" # 256k full context
+    CACHE_TYPE_V="${CACHE_TYPE_V:-q8_0}"
+    MODEL_NAME="Qwen3.8-27B (Dense Q8_0 + Standalone MTP Draft Head)"
+elif [ "$MODEL_TYPE" = "flash-mtp" ] && [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf" ]; then
+    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
+    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
+    MTP_MODE="embedded"
+    TENSOR_SPLIT="${TENSOR_SPLIT:-15,18,16}"
+    CTX_SIZE="${CTX_SIZE:-131072}"
+    CACHE_TYPE_V="${CACHE_TYPE_V:-q5_0}"
+    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE + Embedded MTP Draft Head)"
+else
+    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
+    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
+    MTP_MODE="none"
+    TENSOR_SPLIT="${TENSOR_SPLIT:-14,17,17}"
+    CTX_SIZE="${CTX_SIZE:-131072}"
+    CACHE_TYPE_V="${CACHE_TYPE_V:-q5_0}"
+    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE / 512 Experts / QSA)"
 fi
 
 TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/templates/qwen3.8-claude.jinja}"
@@ -60,7 +60,7 @@ TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/templates/qwen3.8-claude.jinja}"
 # Server Configuration
 PORT="${PORT:-8090}"
 HOST="${HOST:-0.0.0.0}"
-CTX_SIZE="${CTX_SIZE:-131072}" # 128k context with VRAM headroom for compute buffer allocation
+CTX_SIZE="${CTX_SIZE:-262144}" # Full 256k context
 N_GPU_LAYERS="${N_GPU_LAYERS:-99}"
 
 echo "========================================================"
@@ -131,7 +131,7 @@ exec "$LLAMA_SERVER" \
     --cache-reuse 256 \
     --flash-attn on \
     --cache-type-k q8_0 \
-    --cache-type-v q5_0 \
+    --cache-type-v "${CACHE_TYPE_V:-q8_0}" \
     --alias "qwen3.8-flash-next,qwen3.8-27b,claude-3-5-sonnet-20241022,claude-3-5-haiku-20241022,claude-3-opus-20240229,claude-sonnet-4-20250514,default" \
     --reasoning on \
     --reasoning-format deepseek \
