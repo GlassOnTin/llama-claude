@@ -26,7 +26,7 @@ else
 fi
 
 # Detect Model Stack: Flash-Next (Base vs Embedded MTP) vs Qwen3.8-27B
-ENABLE_MTP="${ENABLE_MTP:-1}"
+ENABLE_MTP="${ENABLE_MTP:-0}"
 
 if [ "$ENABLE_MTP" = "1" ] && [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf" ]; then
     MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
