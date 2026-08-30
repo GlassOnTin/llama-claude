@@ -101,15 +101,16 @@ claude-takeover() {
 
   local session_id="$2"
   if [ -z "$session_id" ]; then
-    # If first arg looks like a UUID / session ID
     if [[ "$1" =~ ^[0-9a-fA-F-]{36}$ ]]; then
       session_id="$1"
       target_dir="$PWD"
       repo_name="$(basename "$target_dir")"
       bot_slug="-home-haven-bot-Code-${repo_name}"
       bot_proj_dir="/home/haven-bot/.claude/projects/${bot_slug}"
+      ian_slug="$(printf '%s' "$target_dir" | sed 's#/#-#g')"
+      ian_proj_dir="$HOME/.claude/projects/${ian_slug}"
     else
-      local latest_file="$(sudo -u haven-bot ls -t "${bot_proj_dir}"/*.jsonl 2>/dev/null | head -n 1)"
+      local latest_file="$(sudo -u haven-bot bash -c 'ls -t "$1"/*.jsonl 2>/dev/null | head -n 1' _ "$bot_proj_dir")"
       if [ -z "$latest_file" ]; then
         echo "No sessions found in ${bot_proj_dir}"
         return 1
