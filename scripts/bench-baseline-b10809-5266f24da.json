@@ -1,0 +1,39 @@
+{
+  "label": "baseline b10809-5266f24da (v0.4.0, Sep 4)",
+  "server": "http://127.0.0.1:8090",
+  "runs": 3,
+  "prompt_tokens_target": 4096,
+  "gen_tokens": 256,
+  "prefill_tok_s_median": 619.3,
+  "decode_tok_s_median": 26.28,
+  "prompt_n": 7574,
+  "predicted_n": [
+    256,
+    256,
+    256
+  ],
+  "timestamp": "2026-09-16 21:06:32",
+  "detail": [
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 606.904642091329,
+      "predicted_n": 256,
+      "predicted_per_second": 20.88769252923417,
+      "wall_s": 25.05
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 619.3039004534802,
+      "predicted_n": 256,
+      "predicted_per_second": 26.277087039604826,
+      "wall_s": 22.2
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 628.3606697325866,
+      "predicted_n": 256,
+      "predicted_per_second": 30.78964946165203,
+      "wall_s": 20.58
+    }
+  ]
+}

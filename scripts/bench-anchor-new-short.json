@@ -1,0 +1,47 @@
+{
+  "label": "anchor new b11009 short",
+  "server": "http://127.0.0.1:8090",
+  "runs": 4,
+  "prompt_tokens_target": 1024,
+  "gen_tokens": 128,
+  "prefill_tok_s_median": 681.89,
+  "decode_tok_s_median": 65.64,
+  "prompt_n": 1942,
+  "predicted_n": [
+    128,
+    128,
+    128,
+    128
+  ],
+  "timestamp": "2026-09-16 21:45:36",
+  "detail": [
+    {
+      "prompt_n": 1942,
+      "prompt_per_second": 680.0724756949381,
+      "predicted_n": 128,
+      "predicted_per_second": 66.03539601219003,
+      "wall_s": 4.93
+    },
+    {
+      "prompt_n": 1942,
+      "prompt_per_second": 682.0724183892625,
+      "predicted_n": 128,
+      "predicted_per_second": 66.20179453777855,
+      "wall_s": 4.88
+    },
+    {
+      "prompt_n": 1942,
+      "prompt_per_second": 682.2109113698423,
+      "predicted_n": 128,
+      "predicted_per_second": 65.24460820099038,
+      "wall_s": 4.91
+    },
+    {
+      "prompt_n": 1942,
+      "prompt_per_second": 681.7032189941755,
+      "predicted_n": 128,
+      "predicted_per_second": 64.13616663687112,
+      "wall_s": 4.95
+    }
+  ]
+}

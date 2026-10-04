@@ -1,0 +1,63 @@
+{
+  "label": "PR27861 cache192 inserts4",
+  "server": "http://127.0.0.1:8090",
+  "runs": 6,
+  "prompt_tokens_target": 4096,
+  "gen_tokens": 256,
+  "prefill_tok_s_median": 756.0,
+  "decode_tok_s_median": 83.07,
+  "prompt_n": 7595,
+  "predicted_n": [
+    256,
+    256,
+    256,
+    256,
+    256,
+    256
+  ],
+  "timestamp": "2026-09-22 15:30:01",
+  "detail": [
+    {
+      "prompt_n": 7595,
+      "prompt_per_second": 737.311710053505,
+      "predicted_n": 256,
+      "predicted_per_second": 77.84022972330699,
+      "wall_s": 13.59
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 761.9853228789564,
+      "predicted_n": 256,
+      "predicted_per_second": 81.28057384722631,
+      "wall_s": 13.23
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 745.0512962997392,
+      "predicted_n": 256,
+      "predicted_per_second": 85.47252058463205,
+      "wall_s": 13.33
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 760.1557165034684,
+      "predicted_n": 256,
+      "predicted_per_second": 81.41086627546883,
+      "wall_s": 13.27
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 754.0520841515754,
+      "predicted_n": 256,
+      "predicted_per_second": 87.32170961525028,
+      "wall_s": 13.12
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 757.9525474070598,
+      "predicted_n": 256,
+      "predicted_per_second": 84.7227307431878,
+      "wall_s": 13.22
+    }
+  ]
+}

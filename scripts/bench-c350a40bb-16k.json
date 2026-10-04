@@ -1,0 +1,55 @@
+{
+  "label": "c350a40bb 30k-prompt",
+  "server": "http://127.0.0.1:8090",
+  "runs": 5,
+  "prompt_tokens_target": 16384,
+  "gen_tokens": 256,
+  "prefill_tok_s_median": 757.76,
+  "decode_tok_s_median": 54.97,
+  "prompt_n": 30102,
+  "predicted_n": [
+    256,
+    256,
+    256,
+    256,
+    256
+  ],
+  "timestamp": "2026-09-22 15:01:27",
+  "detail": [
+    {
+      "prompt_n": 30102,
+      "prompt_per_second": 757.7611423197615,
+      "predicted_n": 256,
+      "predicted_per_second": 54.96614839696078,
+      "wall_s": 44.55
+    },
+    {
+      "prompt_n": 30102,
+      "prompt_per_second": 757.8602891530811,
+      "predicted_n": 256,
+      "predicted_per_second": 54.26597606295875,
+      "wall_s": 44.7
+    },
+    {
+      "prompt_n": 30102,
+      "prompt_per_second": 732.5544322962327,
+      "predicted_n": 256,
+      "predicted_per_second": 52.57497810406794,
+      "wall_s": 46.23
+    },
+    {
+      "prompt_n": 30102,
+      "prompt_per_second": 753.1660333278096,
+      "predicted_n": 256,
+      "predicted_per_second": 55.49569516628142,
+      "wall_s": 44.85
+    },
+    {
+      "prompt_n": 30102,
+      "prompt_per_second": 761.2007804495358,
+      "predicted_n": 256,
+      "predicted_per_second": 56.128840120630784,
+      "wall_s": 44.37
+    }
+  ]
+}

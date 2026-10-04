@@ -1,0 +1,47 @@
+{
+  "label": "b10809 interleaved set 2",
+  "server": "http://127.0.0.1:8090",
+  "runs": 4,
+  "prompt_tokens_target": 4096,
+  "gen_tokens": 256,
+  "prefill_tok_s_median": 604.64,
+  "decode_tok_s_median": 30.97,
+  "prompt_n": 7595,
+  "predicted_n": [
+    256,
+    256,
+    256,
+    256
+  ],
+  "timestamp": "2026-09-16 21:26:12",
+  "detail": [
+    {
+      "prompt_n": 7595,
+      "prompt_per_second": 464.98500660590946,
+      "predicted_n": 256,
+      "predicted_per_second": 20.11106195950042,
+      "wall_s": 29.05
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 613.3841987079735,
+      "predicted_n": 256,
+      "predicted_per_second": 29.895643102764456,
+      "wall_s": 21.07
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 633.4909979289846,
+      "predicted_n": 256,
+      "predicted_per_second": 34.417855713600254,
+      "wall_s": 19.57
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 595.8914800893255,
+      "predicted_n": 256,
+      "predicted_per_second": 32.05075028921089,
+      "wall_s": 20.87
+    }
+  ]
+}

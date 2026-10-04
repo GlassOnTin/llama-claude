@@ -1,0 +1,47 @@
+{
+  "label": "anchor old b10809 short",
+  "server": "http://127.0.0.1:8090",
+  "runs": 4,
+  "prompt_tokens_target": 1024,
+  "gen_tokens": 128,
+  "prefill_tok_s_median": 664.46,
+  "decode_tok_s_median": 62.98,
+  "prompt_n": 1942,
+  "predicted_n": [
+    128,
+    128,
+    128,
+    128
+  ],
+  "timestamp": "2026-09-16 21:45:01",
+  "detail": [
+    {
+      "prompt_n": 1942,
+      "prompt_per_second": 644.2993277987292,
+      "predicted_n": 128,
+      "predicted_per_second": 62.96124066364122,
+      "wall_s": 5.14
+    },
+    {
+      "prompt_n": 1942,
+      "prompt_per_second": 665.7093523936915,
+      "predicted_n": 128,
+      "predicted_per_second": 62.5293567944793,
+      "wall_s": 5.08
+    },
+    {
+      "prompt_n": 1942,
+      "prompt_per_second": 663.2051592033888,
+      "predicted_n": 128,
+      "predicted_per_second": 63.008658481163884,
+      "wall_s": 5.07
+    },
+    {
+      "prompt_n": 1942,
+      "prompt_per_second": 670.2338847059667,
+      "predicted_n": 128,
+      "predicted_per_second": 64.27844409723963,
+      "wall_s": 5.0
+    }
+  ]
+}

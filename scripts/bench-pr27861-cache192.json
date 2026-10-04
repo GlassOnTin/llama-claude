@@ -1,0 +1,63 @@
+{
+  "label": "PR27861 moe-expert-cache 192",
+  "server": "http://127.0.0.1:8090",
+  "runs": 6,
+  "prompt_tokens_target": 4096,
+  "gen_tokens": 256,
+  "prefill_tok_s_median": 760.67,
+  "decode_tok_s_median": 81.28,
+  "prompt_n": 7595,
+  "predicted_n": [
+    256,
+    256,
+    256,
+    256,
+    256,
+    256
+  ],
+  "timestamp": "2026-09-22 15:27:57",
+  "detail": [
+    {
+      "prompt_n": 7595,
+      "prompt_per_second": 635.435160974258,
+      "predicted_n": 256,
+      "predicted_per_second": 71.3092034174726,
+      "wall_s": 15.54
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 761.891349505334,
+      "predicted_n": 256,
+      "predicted_per_second": 80.91798438695425,
+      "wall_s": 13.24
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 758.4885828140548,
+      "predicted_n": 256,
+      "predicted_per_second": 78.93761730362101,
+      "wall_s": 13.46
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 760.6854766421652,
+      "predicted_n": 256,
+      "predicted_per_second": 81.64734239501433,
+      "wall_s": 13.23
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 761.8196203454722,
+      "predicted_n": 256,
+      "predicted_per_second": 83.07265893102755,
+      "wall_s": 13.16
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 760.6484251645076,
+      "predicted_n": 256,
+      "predicted_per_second": 86.066943205943,
+      "wall_s": 13.07
+    }
+  ]
+}

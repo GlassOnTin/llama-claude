@@ -1,0 +1,42 @@
+{
+  "label": "mimo-mxfp4-ot-balance-ub512-nocache",
+  "server": "http://127.0.0.1:8091",
+  "runs": 3,
+  "prompt_tokens_target": 16384,
+  "gen_tokens": 256,
+  "prompt_kind": "code",
+  "corpus_sha256": "a7705149c1bb0dfcbe6385feea23be425eed62556977f9cf6ef7ca632bead7de",
+  "corpus_files": 1,
+  "prefill_tok_s_median": 124.46,
+  "decode_tok_s_median": 16.12,
+  "prompt_n": 13591,
+  "predicted_n": [
+    256,
+    256,
+    256
+  ],
+  "timestamp": "2026-09-30 00:13:50",
+  "detail": [
+    {
+      "prompt_n": 13591,
+      "prompt_per_second": 124.26882231028678,
+      "predicted_n": 256,
+      "predicted_per_second": 16.12225397709135,
+      "wall_s": 125.21
+    },
+    {
+      "prompt_n": 13591,
+      "prompt_per_second": 124.4591131575279,
+      "predicted_n": 256,
+      "predicted_per_second": 16.202271444087486,
+      "wall_s": 125.03
+    },
+    {
+      "prompt_n": 13591,
+      "prompt_per_second": 124.69058894133101,
+      "predicted_n": 256,
+      "predicted_per_second": 16.057092219280943,
+      "wall_s": 124.97
+    }
+  ]
+}

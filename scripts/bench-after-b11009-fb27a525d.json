@@ -1,0 +1,39 @@
+{
+  "label": "after rebuild b11009-fb27a525d (master, Sep 16)",
+  "server": "http://127.0.0.1:8090",
+  "runs": 3,
+  "prompt_tokens_target": 4096,
+  "gen_tokens": 256,
+  "prefill_tok_s_median": 606.55,
+  "decode_tok_s_median": 27.74,
+  "prompt_n": 7574,
+  "predicted_n": [
+    256,
+    256,
+    256
+  ],
+  "timestamp": "2026-09-16 21:13:23",
+  "detail": [
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 502.6504291243649,
+      "predicted_n": 256,
+      "predicted_per_second": 21.72209719948501,
+      "wall_s": 27.0
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 606.5509099945399,
+      "predicted_n": 256,
+      "predicted_per_second": 27.742389609767933,
+      "wall_s": 21.86
+    },
+    {
+      "prompt_n": 7574,
+      "prompt_per_second": 631.6509850594609,
+      "predicted_n": 256,
+      "predicted_per_second": 28.186678047452443,
+      "wall_s": 21.24
+    }
+  ]
+}
