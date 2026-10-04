@@ -11,9 +11,44 @@ alias llama-serve-qwen="$HOME/Code/llama-claude/serve.sh"
 alias llama-qwen="$HOME/Code/llama-claude/cli.sh"
 alias llama-dl-qwen="$HOME/Code/llama-claude/download.sh"
 
+# Ensure one llama-server unit is up before launching claude against it.
+# The production (8090) and uncensored (8091) servers both claim the full
+# 3x5090 VRAM budget and cannot run together, so if the "other" unit holds
+# the GPUs it is stopped first. /health answers 503 during model load and
+# 200 once serving; a connection refusal means the port is not bound yet.
+_lclaude_ensure_up() {
+  local port="$1" unit="$2" other="$3" i
+  if curl -fsS --max-time 2 "http://127.0.0.1:$port/health" >/dev/null 2>&1; then
+    return 0
+  fi
+  if systemctl --user is-active "$other" >/dev/null 2>&1; then
+    echo "==> Stopping $other to free the GPU budget..."
+    systemctl --user stop "$other"
+    # give the other server a moment to finish releasing VRAM before the new
+    # CUDA context comes up (avoid racing a SIGINT teardown against OOM)
+    sleep 3
+  fi
+  echo "==> Starting $unit (model load ~30-60s from NVMe with --load-mode none)..."
+  systemctl --user start "$unit"
+  for i in $(seq 1 60); do
+    curl -fsS --max-time 2 "http://127.0.0.1:$port/health" >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  # 60 iterations x <=4s (2s sleep + 2s curl) = max ~4 min before giving up
+  echo "ERROR: $unit not serving after ~4 min. Check: journalctl --user -u $unit -n 50" >&2
+  return 1
+}
+
 # Claude Code launcher against local multi-GPU llama.cpp server (96GB VRAM)
 unalias lclaude 2>/dev/null
 lclaude() {
+  # llama-server caps the slot to the model's training context (n_ctx_train=262144)
+  # even though --ctx-size is 655360, so query the real served window and leave ~15%
+  # headroom for system+tools overhead (see memory: ollama-claude-code-context)
+  _lclaude_ensure_up 8090 llama-qwen llama-uncensored || return 1
+  local served_n_ctx
+  served_n_ctx=$(curl -s --max-time 2 http://127.0.0.1:8090/slots 2>/dev/null | grep -m1 -o '"n_ctx": *[0-9]*' | grep -o '[0-9]*')
+  [ -n "$served_n_ctx" ] || served_n_ctx=262144
   ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:8090}" \
   ANTHROPIC_API_KEY=llama-local \
   ANTHROPIC_AUTH_TOKEN=llama-local \
@@ -24,13 +59,19 @@ lclaude() {
   ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-flash-next \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
   CLAUDE_CODE_DISABLE_ARTIFACT=1 \
-  CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-220000}" \
-  claude --dangerously-skip-permissions --disallowed-tools Artifact WebSearch Todo --model qwen3.8-flash-next "$@"
+  CLAUDE_CODE_MAX_CONTEXT_TOKENS=$(( served_n_ctx * 85 / 100 )) \
+  claude --strict-mcp-config --mcp-config "$HOME/.claude/mcp-lclaude.json" \
+    --dangerously-skip-permissions --disallowed-tools Artifact WebSearch --model qwen3.8-flash-next "$@"
 }
 
 # Claude Code launcher for pure-text / fast compaction workflows
 unalias lclaude-no-vision 2>/dev/null
 lclaude-no-vision() {
+  # same served-context query as lclaude (see comment above)
+  _lclaude_ensure_up 8090 llama-qwen llama-uncensored || return 1
+  local served_n_ctx
+  served_n_ctx=$(curl -s --max-time 2 http://127.0.0.1:8090/slots 2>/dev/null | grep -m1 -o '"n_ctx": *[0-9]*' | grep -o '[0-9]*')
+  [ -n "$served_n_ctx" ] || served_n_ctx=262144
   ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:8090}" \
   ANTHROPIC_API_KEY=llama-local \
   ANTHROPIC_AUTH_TOKEN=llama-local \
@@ -41,8 +82,35 @@ lclaude-no-vision() {
   ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-flash-next \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
   CLAUDE_CODE_DISABLE_ARTIFACT=1 \
-  CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-220000}" \
-  claude --dangerously-skip-permissions --disallowed-tools Artifact WebSearch Todo --model qwen3.8-flash-next "$@"
+  CLAUDE_CODE_MAX_CONTEXT_TOKENS=$(( served_n_ctx * 85 / 100 )) \
+  claude --strict-mcp-config --mcp-config "$HOME/.claude/mcp-lclaude.json" \
+    --dangerously-skip-permissions --disallowed-tools Artifact WebSearch --model qwen3.8-flash-next "$@"
+}
+
+# Claude Code launcher against the uncensored fine-tune (orcarouter) on port 8091.
+# Same recipe as lclaude's server; the unit is deliberately not enabled (boot
+# default stays production). If 8091 is down the launcher swaps the systemd
+# user units itself (they share the 3-GPU budget) and waits for the model load.
+unalias lclaude-uncensored 2>/dev/null
+lclaude-uncensored() {
+  # same served-context query as lclaude (see comment above), on port 8091
+  _lclaude_ensure_up 8091 llama-uncensored llama-qwen || return 1
+  local served_n_ctx
+  served_n_ctx=$(curl -s --max-time 2 http://127.0.0.1:8091/slots 2>/dev/null | grep -m1 -o '"n_ctx": *[0-9]*' | grep -o '[0-9]*')
+  [ -n "$served_n_ctx" ] || served_n_ctx=262144
+  ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:8091}" \
+  ANTHROPIC_API_KEY=llama-local \
+  ANTHROPIC_AUTH_TOKEN=llama-local \
+  ANTHROPIC_MODEL=qwen3.8-flash-next-uncensored \
+  ANTHROPIC_SMALL_FAST_MODEL=qwen3.8-flash-next-uncensored \
+  ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3.8-flash-next-uncensored \
+  ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8-flash-next-uncensored \
+  ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3.8-flash-next-uncensored \
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+  CLAUDE_CODE_DISABLE_ARTIFACT=1 \
+  CLAUDE_CODE_MAX_CONTEXT_TOKENS=$(( served_n_ctx * 85 / 100 )) \
+  claude --strict-mcp-config --mcp-config "$HOME/.claude/mcp-lclaude.json" \
+    --dangerously-skip-permissions --disallowed-tools Artifact WebSearch --model qwen3.8-flash-next-uncensored "$@"
 }
 
 # Haven Maintainer Bot launchers (isolated haven-bot user account)
