@@ -102,11 +102,11 @@ def build_prompt(target_tokens: int, nonce: int) -> str:
     )
 
 
-def run_once(url: str, prompt: str, gen_tokens: int) -> dict:
+def run_once(url: str, prompt: str, gen_tokens: int, temp: float = 0.0) -> dict:
     body = json.dumps({
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": gen_tokens,
-        "temperature": 0,
+        "temperature": temp,
         "seed": 42,
     }).encode()
     req = urllib.request.Request(
@@ -139,6 +139,9 @@ def main() -> int:
                     help="save the assembled corpus text to this file")
     ap.add_argument("--corpus", default=None,
                     help="reuse a previously saved corpus file")
+    ap.add_argument("--temp", type=float, default=0.0,
+                    help="request sampling temperature (default 0 = greedy; "
+                         "probabilistic draft sampling is temperature-dependent)")
     args = ap.parse_args()
 
     corpus = None
@@ -164,7 +167,7 @@ def main() -> int:
         prompt = (build_code_prompt(args.prompt_tokens, i, corpus) if corpus
                   else build_prompt(args.prompt_tokens, i))
         t0 = time.time()
-        r = run_once(args.url, prompt, args.gen_tokens)
+        r = run_once(args.url, prompt, args.gen_tokens, args.temp)
         r["wall_s"] = round(time.time() - t0, 2)
         runs.append(r)
         print(f"run {i}: prefill {r['prompt_n']} tok @ {r['prompt_per_second']:.1f} tok/s | "
@@ -177,6 +180,7 @@ def main() -> int:
         "runs": args.runs,
         "prompt_tokens_target": args.prompt_tokens,
         "gen_tokens": args.gen_tokens,
+        "temp": args.temp,
         "prompt_kind": "code" if corpus else "filler",
         "corpus_sha256": hashlib.sha256(
             corpus[: int(args.prompt_tokens * 3.8)].encode()).hexdigest() if corpus else None,

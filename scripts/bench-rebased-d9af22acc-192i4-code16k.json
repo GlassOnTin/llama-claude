@@ -1,0 +1,58 @@
+{
+  "label": "rebased-d9af22acc-192i4-code16k",
+  "server": "http://127.0.0.1:8090",
+  "runs": 5,
+  "prompt_tokens_target": 16384,
+  "gen_tokens": 256,
+  "prompt_kind": "code",
+  "corpus_sha256": "a7705149c1bb0dfcbe6385feea23be425eed62556977f9cf6ef7ca632bead7de",
+  "corpus_files": 0,
+  "prefill_tok_s_median": 916.42,
+  "decode_tok_s_median": 86.21,
+  "prompt_n": 14181,
+  "predicted_n": [
+    256,
+    256,
+    256,
+    256,
+    256
+  ],
+  "timestamp": "2026-10-04 14:43:36",
+  "detail": [
+    {
+      "prompt_n": 14181,
+      "prompt_per_second": 898.3305912321516,
+      "predicted_n": 256,
+      "predicted_per_second": 84.10575952942993,
+      "wall_s": 18.84
+    },
+    {
+      "prompt_n": 14160,
+      "prompt_per_second": 915.5815688774685,
+      "predicted_n": 256,
+      "predicted_per_second": 87.03505362383245,
+      "wall_s": 18.6
+    },
+    {
+      "prompt_n": 14160,
+      "prompt_per_second": 917.025095466781,
+      "predicted_n": 256,
+      "predicted_per_second": 86.21199699103227,
+      "wall_s": 18.61
+    },
+    {
+      "prompt_n": 14160,
+      "prompt_per_second": 916.4246004864428,
+      "predicted_n": 256,
+      "predicted_per_second": 87.54099407433294,
+      "wall_s": 18.57
+    },
+    {
+      "prompt_n": 14160,
+      "prompt_per_second": 916.8141975671144,
+      "predicted_n": 256,
+      "predicted_per_second": 84.50443780854475,
+      "wall_s": 18.66
+    }
+  ]
+}
