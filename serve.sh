@@ -46,14 +46,23 @@ elif [ "$MODEL_TYPE" = "flash-mtp" ] && [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q
     CACHE_TYPE_V="${CACHE_TYPE_V:-q5_0}"
     MODEL_NAME="Qwen3.8-Flash-Next (125B MoE + Embedded MTP Draft Head)"
 else
-    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-27B-Q8_0.gguf}"
+    # No standalone 27B GGUF lives in $MODEL_DIR; the Q8_0 with the embedded MTP
+    # head (blk.64.nextn.*) is the unsloth UD-Q4_K_XL ollama blob. Vision mmproj
+    # and a standalone MTP draft file are not present on disk, so they are skipped.
+    MODEL_FILE="${MODEL_FILE:-/usr/share/ollama/.ollama/models/blobs/sha256-5440074c687a15bb685cc0a736b9b02754feb2810bd2e9c5edee6140a8a080d4}"
     MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/mmproj-Qwen3.8-27B-BF16.gguf}"
-    MTP_FILE="${MTP_FILE:-$MODEL_DIR/mtp-Qwen3.8-27B-Q8_0.gguf}"
-    MTP_MODE="standalone"
+    MTP_FILE="${MTP_FILE:-}"
+    # Embedded MTP (head tensors in the GGUF, e.g. unsloth builds) measured on
+    # 3x RTX 5090, llama.cpp v0.4.0, 185k-context decode (tok/s), 2026-09-07:
+    #   no MTP 72.4/43.5 (short/deep) | n-max 2: 131.5/68.6 | 3: 135.6/80.3
+    #   4: 128.1/84.7  <- best at depth | 6: 137.1/73.7 (draft cost overtakes)
+    # MTP costs ~20% prefill (1707 -> 1369 tok/s at 185k). Disable with MTP=0.
+    MTP_MODE="${MTP_MODE:-embedded}"
+    MTP_N_MAX="${MTP_N_MAX:-4}"
     TENSOR_SPLIT="${TENSOR_SPLIT:-$DEFAULT_SPLIT_27B}"
     CTX_SIZE="${CTX_SIZE:-262144}" # 256k full context
     CACHE_TYPE_V="${CACHE_TYPE_V:-q8_0}"
-    MODEL_NAME="Qwen3.8-27B (Dense Q8_0 + Standalone MTP Draft Head)"
+    MODEL_NAME="Qwen3.8-27B (Dense, embedded MTP draft head, n-max $MTP_N_MAX)"
 fi
 
 TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/templates/qwen3.8-claude.jinja}"
@@ -79,11 +88,17 @@ echo "========================================================"
 EXTRA_ARGS=()
 
 # Multi-Token Prediction (MTP) Speculative Decoding
-if [ "$MTP_MODE" = "embedded" ]; then
-    echo " [+] Embedded MTP Draft Head detected: Enabling speculative decoding (3 draft tokens)"
+# NOTE: "embedded" needs nextn tensors inside the model GGUF (unsloth builds have
+# them). On stock llama.cpp (>= v0.4.0) draft-mtp for Flash-Next (qwen4exp) is NOT
+# supported yet — the flash-mtp branch above can't load: PRs #27836 / #28097 open.
+if [ "${MTP:-1}" = "0" ]; then
+    echo " [-] MTP disabled (MTP=0)"
+    MTP_N_MAX="${MTP_N_MAX:-4}"
+elif [ "$MTP_MODE" = "embedded" ]; then
+    echo " [+] Embedded MTP Draft Head: speculative decoding, n-max $MTP_N_MAX"
     EXTRA_ARGS+=(
         --spec-type draft-mtp
-        --spec-draft-n-max 3
+        --spec-draft-n-max "$MTP_N_MAX"
     )
 elif [ "$MTP_MODE" = "standalone" ] && [ -n "${MTP_FILE:-}" ] && [ -f "$MTP_FILE" ]; then
     echo " [+] MTP Draft Model detected: Enabling speculative decoding (3 draft tokens)"

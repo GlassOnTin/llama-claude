@@ -37,9 +37,17 @@ TEMPLATE_FILE="${TEMPLATE_FILE:-/home/ian/Code/llama-claude/templates/qwen3.8-cl
 
 PORT="${PORT:-8090}"
 HOST="${HOST:-0.0.0.0}"
-CTX_SIZE="${CTX_SIZE:-262144}"
+# Total KV budget across all slots; each --parallel slot gets CTX_SIZE/parallel.
+# parallel=1 gives the single slot the full 640k — Claude Code's MCP-heavy
+# requests overflowed a 131072 slot (5-way split).
+CTX_SIZE="${CTX_SIZE:-655360}"
 N_GPU_LAYERS="${N_GPU_LAYERS:-99}"
 N_CPU_MOE="${N_CPU_MOE:-8}"
+# ubatch 256, not 512: the 655k KV leaves ~2GB too little for the 4.3GB pp
+# compute buffers on each GPU (alloc fails on device 1/2 with 8GB "free" per
+# nvidia-smi). ubatch 256 halves the pp buffer to ~2.2GB and loads. Cost:
+# prefill ~282 tok/s vs ~530 at 512 (generation speed unaffected).
+UBATCH="${UBATCH:-256}"
 MTP="${MTP:-0}"
 
 # Balanced split: GPU0 carries 18 layers (8 in RAM + 10 with experts in VRAM), GPUs 1 & 2 carry 15 layers each
@@ -79,6 +87,37 @@ else
     echo " [-] MTP disabled (set MTP=1 to enable)"
 fi
 
+# GPU-resident LRU cache for the host-resident experts (upstream PR #27861,
+# local commit 8603b4dc2). Measured on Haven-source prompts (McpTools.kt
+# context, 15.2k tok), 2026-09-22: decode 58.5 stock -> 71.0 @128/i4 (+21%)
+# -> 76.8 @192/i4 (+31%). 192 leaves only ~1.7GB headroom on GPU0 (desktop),
+# so production defaults to 128. MOE_CACHE=0 disables.
+MOE_CACHE="${MOE_CACHE:-128}"
+MOE_CACHE_INSERTS="${MOE_CACHE_INSERTS:-4}"
+if [ "$MOE_CACHE" != "0" ]; then
+    echo " [+] MoE expert cache: $MOE_CACHE slots, $MOE_CACHE_INSERTS inserts/step"
+    EXTRA_ARGS+=(
+        --moe-expert-cache "$MOE_CACHE"
+        --moe-expert-cache-inserts "$MOE_CACHE_INSERTS"
+    )
+else
+    echo " [-] MoE expert cache disabled (MOE_CACHE=0)"
+fi
+
+# --load-mode none eager-loads the RAM-resident experts into anonymous memory
+# instead of mmap'd file pages. Only viable with real RAM headroom
+# (256GB kit; the 2x48GB kit could not spare it). Measured 2026-09-30 on
+# 16k-code prompts, 5 runs: prefill 469 -> 820 tok/s (+75%), decode
+# unchanged (~75 tok/s), cold run 0 472 vs 264-283 with mmap (first-prompt
+# penalty mostly gone). LOAD_MODE=mmap reverts.
+LOAD_MODE="${LOAD_MODE:-none}"
+if [ "$LOAD_MODE" != "mmap" ]; then
+    echo " [+] Load mode: none (eager RAM-resident experts)"
+    EXTRA_ARGS+=(--load-mode none)
+else
+    echo " [-] Load mode: mmap"
+fi
+
 exec "$LLAMA_SERVER" \
     --model "$MODEL_FILE" \
     --host "$HOST" \
@@ -90,7 +129,7 @@ exec "$LLAMA_SERVER" \
     --ctx-size "$CTX_SIZE" \
     --parallel 1 \
     --batch-size 2048 \
-    --ubatch-size 512 \
+    --ubatch-size "$UBATCH" \
     --flash-attn on \
     --cache-type-k q8_0 \
     --cache-type-v q8_0 \
