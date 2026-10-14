@@ -1,107 +1,101 @@
 #!/bin/bash
 # ==============================================================================
-# Qwen3.8-27B Dual RTX 5090 (64GB VRAM) Server Script
-# 256k Full Context + Vision + MTP Speculative Decoding + Asymmetric Layer Split
+# Qwen3.8-Flash-Next 125B MoE — Triple RTX 5090 (96GB VRAM) + RAM expert offload
+# ==============================================================================
+# The model is ~103.7GiB of weights (48 layers) and does NOT fit in 96GB VRAM.
+# Instead of --n-cpu-moe 8 (which spills blk.0..7 = 12,700MiB including the
+# dynamic-quant outlier layers blk.2 [1,950MiB: q8_0+q5_K] and blk.4 [1,750MiB:
+# q8_0+q4_K], fragmenting llama_moe_cache into 3 layout groups where blk.2/blk.4
+# get only ~205 slots and bypass the cache on micro-batches >20 tokens), we use
+# -ot to offload 8 uniform 1,500MiB layers on GPU0 (blk.5..12 = 12,000MiB:
+# ffn_down_exps q5_1 + ffn_gate/up_exps q4_K).
+#   - Keeps the heavy q8_0 outlier layers blk.2 & blk.4 permanently in GPU0 VRAM
+#   - Consolidates GPU0's MoE cache into 1 unified LRU pool (5632MiB = 1,922 slots)
+#   - Keeps all host-resident experts on GPU0 (PCIe 5.0 x16 @ 63 GB/s; GPUs 1 & 2
+#     sit behind a chipset switch at PCIe 4.0 x4 @ 7.8 GB/s)
+#   - Uses --tensor-split 18,14,16 because the desktop display lives on GPU1
+#     (0000:19:00.0, ~1.3GiB), shifting 1 layer from GPU1 to headless GPU2.
+#
+# Config (2026-10-14, build-cuda-master f2cc7282c + 87a068c00 + 6388b92bf):
+#   ctx     262144  (n_ctx_train cap; --ctx-size above this is ignored)
+#   ubatch  1024    (saturated by 1280; see UBATCH block below)
+#   KV      F16     (q8_0 flash-attn decode penalty measured: -6% @16k,
+#                    -38% @240k depth vs F16. F16 costs ~+3.3GB total VRAM.)
+#   offload -ot blk.5..12 (8 uniform 1,500MiB layers = 12,000MiB in pinned RAM)
+#   cache   5632MiB (1 unified LRU group on GPU0; leaves ~1.2GiB free on GPU0,
+#                    ~3.1GiB free on GPU1 with desktop, ~1.9GiB free on GPU2)
+#
+# Bench (code16k corpus a7705149, 5 runs):
+#   2026-10-11 (fork cache 128/i4, ub256, q8 KV):           prefill  906, decode 77.5
+#   2026-10-12 (ncmoe 8, mib5120, ub1024, f16, 18,15,15):   prefill 2233, decode 92.5
+#   2026-10-14 (-ot blk.5..12, mib5632, ub1024, 18,14,16):  prefill 2379, decode 97.4
 # ==============================================================================
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODEL_DIR="${MODEL_DIR:-$HOME/models}"
-LLAMA_DIR="${LLAMA_DIR:-$HOME/models/llama.cpp}"
-LLAMA_SERVER="${LLAMA_SERVER:-$LLAMA_DIR/build-cuda/bin/llama-server}"
+MODEL_DIR="${MODEL_DIR:-/home/ian/models}"
+LLAMA_DIR="${LLAMA_DIR:-/home/ian/models/llama.cpp}"
+LLAMA_SERVER="${LLAMA_SERVER:-$LLAMA_DIR/build-cuda-master/bin/llama-server}"
 
-# Detect available NVIDIA GPUs
-NUM_GPUS=$(nvidia-smi -L 2>/dev/null | wc -l || echo 2)
-if [ "$NUM_GPUS" -ge 3 ]; then
-    export CUDA_VISIBLE_DEVICES="0,1,2"
-    DEFAULT_SPLIT_27B="20,22,22"
-    DEFAULT_SPLIT_FLASH="12,18,18"
-    GPU_LABEL="Triple RTX 5090 (96GB Total VRAM)"
-else
-    export CUDA_VISIBLE_DEVICES="0,1"
-    DEFAULT_SPLIT_27B="30,34"
-    DEFAULT_SPLIT_FLASH="20,28"
-    GPU_LABEL="Dual RTX 5090 (64GB Total VRAM)"
-fi
+FLASH_DIR="$MODEL_DIR/Qwen3.8-Flash-Next"
+MODEL_FILE="${MODEL_FILE:-$FLASH_DIR/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
+MMPROJ_FILE="${MMPROJ_FILE:-$FLASH_DIR/mmproj-BF16.gguf}"
+MTP_FILE="${MTP_FILE:-$FLASH_DIR/mtp-Qwen3.8-Flash-Next-Q8_0.gguf}"
+TEMPLATE_FILE="${TEMPLATE_FILE:-/home/ian/Code/llama-claude/templates/qwen3.8-claude.jinja}"
 
-# Detect Model Stack: Qwen3.8-Flash-Next (Default: 125B MoE / 256k context / 8-layer RAM offload) vs 27B
-MODEL_TYPE="${MODEL_TYPE:-flash}"
-N_CPU_MOE="${N_CPU_MOE:-8}"
-
-if [ "$MODEL_TYPE" = "flash" ] || [ "$MODEL_TYPE" = "flash-next" ]; then
-    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf}"
-    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
-    MTP_MODE="none"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-18,15,15}"
-    CTX_SIZE="${CTX_SIZE:-262144}"
-    CACHE_TYPE_V="${CACHE_TYPE_V:-q8_0}"
-    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE / 512 Experts / 8 RAM Layers)"
-elif [ "$MODEL_TYPE" = "flash-mtp" ] && [ -f "$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf" ]; then
-    MODEL_FILE="${MODEL_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/UD-Q4_K_XL-MTP/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00005.gguf}"
-    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/Qwen3.8-Flash-Next/mmproj-BF16.gguf}"
-    MTP_MODE="embedded"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-15,18,16}"
-    CTX_SIZE="${CTX_SIZE:-131072}"
-    CACHE_TYPE_V="${CACHE_TYPE_V:-q5_0}"
-    MODEL_NAME="Qwen3.8-Flash-Next (125B MoE + Embedded MTP Draft Head)"
-else
-    # No standalone 27B GGUF lives in $MODEL_DIR; the Q8_0 with the embedded MTP
-    # head (blk.64.nextn.*) is the unsloth UD-Q4_K_XL ollama blob. Vision mmproj
-    # and a standalone MTP draft file are not present on disk, so they are skipped.
-    MODEL_FILE="${MODEL_FILE:-/usr/share/ollama/.ollama/models/blobs/sha256-5440074c687a15bb685cc0a736b9b02754feb2810bd2e9c5edee6140a8a080d4}"
-    MMPROJ_FILE="${MMPROJ_FILE:-$MODEL_DIR/mmproj-Qwen3.8-27B-BF16.gguf}"
-    MTP_FILE="${MTP_FILE:-}"
-    # Embedded MTP (head tensors in the GGUF, e.g. unsloth builds) measured on
-    # 3x RTX 5090, llama.cpp v0.4.0, 185k-context decode (tok/s), 2026-09-07:
-    #   no MTP 72.4/43.5 (short/deep) | n-max 2: 131.5/68.6 | 3: 135.6/80.3
-    #   4: 128.1/84.7  <- best at depth | 6: 137.1/73.7 (draft cost overtakes)
-    # MTP costs ~20% prefill (1707 -> 1369 tok/s at 185k). Disable with MTP=0.
-    MTP_MODE="${MTP_MODE:-embedded}"
-    MTP_N_MAX="${MTP_N_MAX:-4}"
-    TENSOR_SPLIT="${TENSOR_SPLIT:-$DEFAULT_SPLIT_27B}"
-    CTX_SIZE="${CTX_SIZE:-262144}" # 256k full context
-    CACHE_TYPE_V="${CACHE_TYPE_V:-q8_0}"
-    MODEL_NAME="Qwen3.8-27B (Dense, embedded MTP draft head, n-max $MTP_N_MAX)"
-fi
-
-TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/templates/qwen3.8-claude.jinja}"
-
-# Server Configuration
 PORT="${PORT:-8090}"
 HOST="${HOST:-0.0.0.0}"
-CTX_SIZE="${CTX_SIZE:-262144}" # Full 256k context
+# Train-time cap: 262144. The server clamps anything larger to this anyway.
+CTX_SIZE="${CTX_SIZE:-262144}"
 N_GPU_LAYERS="${N_GPU_LAYERS:-99}"
+# Uniform 8-layer expert offload on GPU0 (blk.5..12: all 1,500MiB q5_1+q4_K).
+# Set N_CPU_MOE > 0 to override with legacy --n-cpu-moe N instead.
+N_CPU_MOE="${N_CPU_MOE:-0}"
+MOE_OT_REGEX="${MOE_OT_REGEX:-blk\\.(5|6|7|8|9|10|11|12)\\.ffn_(up|down|gate|gate_up)_(ch|)exps=CPU}"
+UBATCH="${UBATCH:-1024}"
+MTP="${MTP:-0}"
+KT="${KT:-f16}"
+VT="${VT:-f16}"
+
+# Desktop-aware split: GPU0 carries 18 layers (8 uniform in RAM + 10 in VRAM
+# including heavy blk.2/blk.4), GPU1 carries 14 layers (+ ~1.3GiB desktop),
+# GPU2 carries 16 layers.
+TENSOR_SPLIT="${TENSOR_SPLIT:-18,14,16}"
+
+export CUDA_VISIBLE_DEVICES="0,1,2"
 
 echo "========================================================"
-echo " Starting $MODEL_NAME on $GPU_LABEL"
+echo " Starting Qwen3.8-Flash-Next (125B MoE, 512 experts, 10 active)"
 echo "========================================================"
 echo " - Base Model:    $MODEL_FILE"
 echo " - Vision mmproj: $MMPROJ_FILE"
-echo " - Template:      $TEMPLATE_FILE"
-echo " - Context Size:  $CTX_SIZE tokens"
-echo " - KV Cache:      Q8_0 (Keys) / Q5_0 (Values) — High-Precision Asymmetric Cache"
-echo " - Layer Split:   Pipelined ($TENSOR_SPLIT layers)"
+echo " - Context Size:  $CTX_SIZE tokens (hybrid SSM: KV grows on 12/48 layers only)"
+echo " - KV Cache:      ${KT} / ${VT} (decoded ~-6% @16k / -38% @240k vs F16)"
+echo " - Layer Split:   $TENSOR_SPLIT (GPU1 hosts desktop; GPU0 PCIe 5.0 x16)"
+if [ "$N_CPU_MOE" != "0" ]; then
+    echo " - Expert Offload: first $N_CPU_MOE layers' experts in RAM (--n-cpu-moe)"
+else
+    echo " - Expert Offload: -ot $MOE_OT_REGEX (8 uniform 1,500MiB layers in RAM)"
+fi
+echo " - MTP:           $([ "$MTP" = "1" ] && echo on || echo off)"
 echo " - Endpoint:      http://$HOST:$PORT"
 echo "========================================================"
 
+if [ ! -f "$MODEL_FILE" ]; then
+    echo "ERROR: model file not found: $MODEL_FILE"
+    exit 1
+fi
+
 EXTRA_ARGS=()
 
-# Multi-Token Prediction (MTP) Speculative Decoding
-# NOTE: "embedded" needs nextn tensors inside the model GGUF (unsloth builds have
-# them). On stock llama.cpp (>= v0.4.0) draft-mtp for Flash-Next (qwen4exp) is NOT
-# supported yet — the flash-mtp branch above can't load: PRs #27836 / #28097 open.
-if [ "${MTP:-1}" = "0" ]; then
-    echo " [-] MTP disabled (MTP=0)"
-    MTP_N_MAX="${MTP_N_MAX:-4}"
-elif [ "$MTP_MODE" = "embedded" ]; then
-    echo " [+] Embedded MTP Draft Head: speculative decoding, n-max $MTP_N_MAX"
-    EXTRA_ARGS+=(
-        --spec-type draft-mtp
-        --spec-draft-n-max "$MTP_N_MAX"
-    )
-elif [ "$MTP_MODE" = "standalone" ] && [ -n "${MTP_FILE:-}" ] && [ -f "$MTP_FILE" ]; then
-    echo " [+] MTP Draft Model detected: Enabling speculative decoding (3 draft tokens)"
+if [ "$N_CPU_MOE" != "0" ]; then
+    EXTRA_ARGS+=(--n-cpu-moe "$N_CPU_MOE")
+elif [ -n "$MOE_OT_REGEX" ]; then
+    EXTRA_ARGS+=(-ot "$MOE_OT_REGEX")
+fi
+
+if [ "$MTP" = "1" ] && [ -f "$MTP_FILE" ]; then
+    echo " [+] MTP draft model detected: enabling speculative decoding (3 draft tokens)"
     EXTRA_ARGS+=(
         --spec-draft-model "$MTP_FILE"
         --spec-type draft-mtp
@@ -109,35 +103,35 @@ elif [ "$MTP_MODE" = "standalone" ] && [ -n "${MTP_FILE:-}" ] && [ -f "$MTP_FILE
         --spec-draft-ngl 99
     )
 else
-    echo " [-] Running standard full-precision QSA decoding (MTP draft disabled for maximum throughput)."
+    echo " [-] MTP disabled (set MTP=1 to enable; benched negative 2026-10-08/12)"
 fi
 
-# Vision Projector (Default: 1 for multimodal support, set ENABLE_VISION=0 for pure-text)
-ENABLE_VISION="${ENABLE_VISION:-1}"
-if [ "$ENABLE_VISION" = "1" ] && [ -n "${MMPROJ_FILE:-}" ] && [ -f "$MMPROJ_FILE" ]; then
-    echo " [+] Vision Projector detected: Enabling multimodal support"
-    EXTRA_ARGS+=(--mmproj "$MMPROJ_FILE")
+# Upstream MoE expert cache (PR #29887 + #30112): GiB budget in MiB, single
+# unified LRU bank on GPU0 (1,922 slots @ 5632MiB across blk.5..12).
+MOE_CACHE_MIB="${MOE_CACHE_MIB:-5632}"
+if [ "$MOE_CACHE_MIB" != "0" ]; then
+    echo " [+] MoE cache: --moe-cache-mib $MOE_CACHE_MIB (upstream; unified LRU on GPU0)"
+    EXTRA_ARGS+=(--moe-cache-mib "$MOE_CACHE_MIB")
 else
-    echo " [-] Vision projector disabled: Enabling prefix cache-reuse and context-shifting"
+    echo " [-] MoE cache disabled (MOE_CACHE_MIB=0)"
 fi
 
-# CPU MoE Offload
-if [ -n "${N_CPU_MOE:-}" ] && [ "$N_CPU_MOE" -gt 0 ]; then
-    echo " [+] CPU MoE Offloading: First $N_CPU_MOE layers' experts offloaded to system RAM"
-    EXTRA_ARGS+=(--n-cpu-moe "$N_CPU_MOE")
+# --load-mode none eager-loads the RAM-resident experts into anonymous memory
+# instead of mmap'd file pages. Measured 2026-09-30 on 16k-code prompts,
+# 5 runs: prefill 469 -> 820 tok/s (+75%), decode unchanged, cold run 0
+# 472 vs 264-283 with mmap (first-prompt penalty mostly gone). LOAD_MODE=mmap
+# reverts.
+LOAD_MODE="${LOAD_MODE:-none}"
+if [ "$LOAD_MODE" != "mmap" ]; then
+    echo " [+] Load mode: none (eager RAM-resident experts)"
+    EXTRA_ARGS+=(--load-mode none)
+else
+    echo " [-] Load mode: mmap"
 fi
 
-# Custom Chat Template
-if [ -f "$TEMPLATE_FILE" ]; then
-    echo " [+] Custom Chat Template loaded: $TEMPLATE_FILE"
-    EXTRA_ARGS+=(--chat-template-file "$TEMPLATE_FILE")
-fi
-
-if [ ! -f "$MODEL_FILE" ]; then
-    echo "ERROR: Model file $MODEL_FILE not found."
-    echo "Please run: $SCRIPT_DIR/download.sh"
-    exit 1
-fi
+# NOTE: --context-shift removed 2026-10-12: it is inert for this model
+# (llama_memory_hybrid_idx does not implement KV shifting; server warns
+# "KV cache shifting is not supported for this context").
 
 exec "$LLAMA_SERVER" \
     --model "$MODEL_FILE" \
@@ -149,19 +143,19 @@ exec "$LLAMA_SERVER" \
     --ctx-size "$CTX_SIZE" \
     --parallel 1 \
     --batch-size 2048 \
-    --ubatch-size 512 \
-    --cache-reuse 256 \
+    --ubatch-size "$UBATCH" \
     --flash-attn on \
-    --cache-type-k q8_0 \
-    --cache-type-v "${CACHE_TYPE_V:-q8_0}" \
-    --alias "qwen3.8-flash-next,qwen3.8-27b,claude-3-5-sonnet-20241022,claude-3-5-haiku-20241022,claude-3-opus-20240229,claude-sonnet-4-20250514,default" \
+    --cache-type-k "$KT" \
+    --cache-type-v "$VT" \
+    --mmproj "$MMPROJ_FILE" \
+    --alias "qwen3.8-flash-next,qwen3.8-125b,default" \
+    --chat-template-file "$TEMPLATE_FILE" \
     --reasoning on \
     --reasoning-format deepseek \
     --reasoning-budget 2048 \
     --temp 0.2 \
     --top-p 0.95 \
     --min-p 0.0 \
-    --context-shift \
     --metrics \
     "${EXTRA_ARGS[@]}" \
     "$@"

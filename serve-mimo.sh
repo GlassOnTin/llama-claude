@@ -2,18 +2,18 @@
 # ==============================================================================
 # MiMo-V2.6-Flash (309B MoE / 15B active, arch mimo2) — 3x RTX 5090 + RAM spill
 # ==============================================================================
-# Native 4-bit (MXFP4) weights ~167GB. Budget with 256GB system RAM:
-#   dense + KV + buffers on GPU ~75GB  -> ~75GB experts in VRAM
-#   remaining experts in RAM            -> ~92GB (~28 of 47 MoE layers)
-# 256 experts, 8 fire per token -> per-token RAM traffic ~3.5GB.
-#
-# TUNE N_CPU_MOE on first load:
-#   OOM on GPU      -> raise (30, 32)
-#   VRAM to spare   -> lower for speed (hot experts hit VRAM; #27861 cache helps)
-#
-# Speculative decoding OFF by default (clean bench). Set SPEC_TYPE=dflash
-# (dflash-Q8_0 drafter, 7-token predicts) or SPEC_TYPE=mtp (mtp-Q8_0 sidecar;
-# the ggml-org repo reports a load bug on it — test both, trust the bench).
+# Native 4-bit (MXFP4) weights ~167GB (48 blocks; blk.0 dense, blk.1..47 MoE).
+# Benched 2026-10-12 on 3x RTX 5090 (96GB VRAM) + 256GB DDR5:
+#   - 22 of 47 MoE layers fit in VRAM via per-GPU -ot placement:
+#       GPU0 (layers 0-17):  blk.1..6   in VRAM (6 MoE + blk.0 dense + 3.2GB vision)
+#       GPU1 (layers 18-32): blk.18..25 in VRAM (8 MoE)
+#       GPU2 (layers 33-47): blk.33..40 in VRAM (8 MoE + output head)
+#     Remaining 25 MoE layers (blk.7..17, 26..32, 41..47) spill to pinned RAM.
+#   - UBATCH=512 + F16 KV + --load-mode none:
+#       prefill 390 -> 867 tok/s (+122%), decode 18.0 -> 21.8 tok/s (+21%).
+#   - NOTE: --moe-cache-mib does NOT engage on MXFP4 expert weights (the cache
+#     only supports Q4_0/Q4_1/Q5_0/Q5_1/Q8_0/Q4_K/Q5_K/Q6_K), so maximizing
+#     direct VRAM-resident MoE layers via -ot is the primary lever.
 # ==============================================================================
 
 set -e
@@ -29,10 +29,14 @@ DFLASH_FILE="${DFLASH_FILE:-$MODEL_DIR/dflash-MiMo-V2.6-Flash-RL-Q8_0.gguf}"
 PORT="${PORT:-8091}"
 HOST="${HOST:-0.0.0.0}"
 CTX_SIZE="${CTX_SIZE:-262144}"
-UBATCH="${UBATCH:-256}"
-N_CPU_MOE="${N_CPU_MOE:-28}"
-# Balanced split over 3x5090; adjust if load OOMs on a specific device
+UBATCH="${UBATCH:-512}"
+KT="${KT:-f16}"
+VT="${VT:-f16}"
+# Balanced split over 3x5090 (layers 0..17 on GPU0, 18..32 on GPU1, 33..47 on GPU2)
 TENSOR_SPLIT="${TENSOR_SPLIT:-18,15,15}"
+# Spill 25 of 47 MoE layers to CPU (keeping 6 on GPU0, 8 on GPU1, 8 on GPU2 in VRAM)
+MOE_OT_REGEX="${MOE_OT_REGEX:-blk\\.([7-9]|1[0-7]|2[6-9]|3[0-2]|4[1-7])\\.ffn_(up|down|gate)_exps\\.weight=CPU}"
+LOAD_MODE="${LOAD_MODE:-none}"
 SPEC_TYPE="${SPEC_TYPE:-none}"
 
 export CUDA_VISIBLE_DEVICES="0,1,2"
@@ -43,9 +47,9 @@ echo "========================================================"
 echo " - Base Model:     $MODEL_FILE"
 echo " - Vision mmproj:  $MMPROJ_FILE"
 echo " - Context Size:   $CTX_SIZE (39/48 layers SWA-128: KV is cheap, 9 global layers)"
-echo " - KV Cache:       Q8_0 K / Q8_0 V"
-echo " - Layer Split:    $TENSOR_SPLIT"
-echo " - Expert Spill:   first $N_CPU_MOE layers' experts in RAM"
+echo " - KV Cache:       ${KT} / ${VT}"
+echo " - Layer Split:    $TENSOR_SPLIT (6/8/8 MoE layers in VRAM, 25 in RAM)"
+echo " - Expert Offload: -ot $MOE_OT_REGEX"
 echo " - Spec decoding:  $SPEC_TYPE"
 echo " - Endpoint:       http://$HOST:$PORT"
 echo "========================================================"
@@ -56,6 +60,13 @@ if [ ! -f "$MODEL_FILE" ]; then
 fi
 
 EXTRA_ARGS=()
+
+if [ "$LOAD_MODE" != "mmap" ]; then
+    echo " [+] Load mode: none (eager RAM-resident experts)"
+    EXTRA_ARGS+=(--load-mode none)
+else
+    echo " [-] Load mode: mmap"
+fi
 
 case "$SPEC_TYPE" in
     mtp)
@@ -78,14 +89,14 @@ exec "$LLAMA_SERVER" \
     --n-gpu-layers 99 \
     --split-mode layer \
     --tensor-split "$TENSOR_SPLIT" \
-    --n-cpu-moe "$N_CPU_MOE" \
+    -ot "$MOE_OT_REGEX" \
     --ctx-size "$CTX_SIZE" \
     --parallel 1 \
     --batch-size 2048 \
     --ubatch-size "$UBATCH" \
     --flash-attn on \
-    --cache-type-k q8_0 \
-    --cache-type-v q8_0 \
+    --cache-type-k "$KT" \
+    --cache-type-v "$VT" \
     --mmproj "$MMPROJ_FILE" \
     --jinja \
     --alias "mimo-v2.6-flash,claude-3-5-sonnet-20241022,default" \
@@ -95,7 +106,6 @@ exec "$LLAMA_SERVER" \
     --temp 0.2 \
     --top-p 0.95 \
     --min-p 0.0 \
-    --context-shift \
     --metrics \
     "${EXTRA_ARGS[@]}" \
     "$@"
